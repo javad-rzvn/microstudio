@@ -378,6 +378,9 @@ AppUI = class AppUI {
         if (s === section) {
           element.style.display = "block";
           menuitem.classList.add("selected");
+          if (s === "tabs") {
+            this.app.tab_manager.tabOpened();
+          }
         } else {
           element.style.display = "none";
           menuitem.classList.remove("selected");

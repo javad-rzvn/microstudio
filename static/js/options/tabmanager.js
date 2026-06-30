@@ -7,7 +7,11 @@ this.TabManager = (function() {
       this.plugin_views = {};
     }
 
-    projectOpened() {
+    projectOpened() {}
+
+    //@updateProjectTabSelection()
+    //@updatePluginSelection()
+    tabOpened() {
       this.updateProjectTabSelection();
       return this.updatePluginSelection();
     }

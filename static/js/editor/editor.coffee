@@ -711,6 +711,7 @@ class @Editor extends Manager
       @lib_manager.style.display = "block"
       @editor_view.style.display = "none"
       @lib_manager_button.classList.add "selected"
+      @app.lib_manager.tabOpened()
     else
       @lib_manager.style.display = "none"
       @editor_view.style.display = "block"

@@ -5,6 +5,10 @@ class @TabManager
     @plugin_views = {}
 
   projectOpened:()->
+    #@updateProjectTabSelection()
+    #@updatePluginSelection()
+
+  tabOpened:()->
     @updateProjectTabSelection()
     @updatePluginSelection()
 

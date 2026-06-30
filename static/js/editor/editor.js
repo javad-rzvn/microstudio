@@ -901,7 +901,8 @@ this.Editor = class Editor extends Manager {
     if (view) {
       this.lib_manager.style.display = "block";
       this.editor_view.style.display = "none";
-      return this.lib_manager_button.classList.add("selected");
+      this.lib_manager_button.classList.add("selected");
+      return this.app.lib_manager.tabOpened();
     } else {
       this.lib_manager.style.display = "none";
       this.editor_view.style.display = "block";

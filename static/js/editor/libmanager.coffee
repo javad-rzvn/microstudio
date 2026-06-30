@@ -3,6 +3,10 @@ class @LibManager
     @known_libs = {}
 
   projectOpened:()->
+    # @active_libs = {}
+    # @updateLibSelection()
+
+  tabOpened:()->
     @active_libs = {}
     @updateLibSelection()
 
