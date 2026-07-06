@@ -4,5 +4,6 @@
   "run_domain": "youroutputdomain.com",
   "backup-key": "your_backup_service_key",
   "builder-key": "your_builder_service_key",
-  "relay-key": "your_relay_key"
+  "relay-key": "your_relay_key",
+  "AI_GATEWAY_ALLOW_PLAINTEXT_KEYS": "your_relay_key"
 }

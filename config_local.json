@@ -1,5 +1,6 @@
 {
   "realm": "local",
   "dev_domain": "http://localhost:8080",
-  "run_domain": "http://localhost:8080"
+  "run_domain": "http://localhost:8080",
+  "AI_GATEWAY_ALLOW_PLAINTEXT_KEYS": true
 }
