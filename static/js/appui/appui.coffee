@@ -472,6 +472,7 @@ class AppUI
     @aiDraftImageById = {}
     @aiSelectedPath = null
     @aiBusy = false
+    @aiProviderProfiles = []
 
     @setAction "ai-generator-generate",()=>
       @generateAiDraft()
@@ -527,6 +528,8 @@ class AppUI
       @updateAiGeneratorButtons()
     @get("ai-generator-image-provider").addEventListener "change",()=>
       @updateAiGeneratorButtons()
+    @get("ai-generator-provider").addEventListener "change",()=>
+      @updateAiGeneratorButtons()
 
     for id in [
       "ai-generator-idea"
@@ -544,6 +547,7 @@ class AppUI
           @updateAiGeneratorButtons()
 
     @updateAiProviderVisibility()
+    @loadAiProviders()
     @renderAiDraft null
 
   clearAiDraft:()->
@@ -583,6 +587,48 @@ class AppUI
     return if not element?
     element.textContent = text or ""
 
+  loadAiProviders:(selectedId=null)->
+    select = @get("ai-generator-provider")
+    return Promise.resolve([]) if not select?
+    fetch "/api/ai/providers/public?purpose=text",
+      credentials: "same-origin"
+    .then (response)=>
+      response.text().then (text)=>
+        data = null
+        if text? and text.length > 0
+          try
+            data = JSON.parse text
+          catch error
+            data =
+              error: text
+        if not response.ok
+          err = new Error((if data? then data.error else null) or response.statusText or "Request failed")
+          err.response = data
+          throw err
+        providers = if Array.isArray(data?.providers) then data.providers else []
+        @aiProviderProfiles = providers
+        wanted = if selectedId? then "#{selectedId}" else select.value
+        select.innerHTML = ""
+        select.appendChild new Option "Use server default",""
+        for provider in providers
+          label = provider.name + (if provider.modelId? and provider.modelId.length > 0 then " (#{provider.modelId})" else "")
+          select.appendChild new Option label,"#{provider.id}"
+        if wanted
+          select.value = wanted
+        else
+          defaultProvider = null
+          for provider in providers
+            if provider.isDefault
+              defaultProvider = provider
+              break
+          select.value = if defaultProvider? then "#{defaultProvider.id}" else ""
+        providers
+    ,(err)=>
+      @aiProviderProfiles = []
+      select.innerHTML = ""
+      select.appendChild new Option "Use server default",""
+      []
+
   updateAiGeneratorButtons:()->
     draftReady = @aiDraft?
     targetMode = if @get("ai-generator-target-mode")? then @get("ai-generator-target-mode").value else "apply_to_current_project"
@@ -616,6 +662,7 @@ class AppUI
       "ai-generator-transparent-sprites"
       "ai-generator-asset-resolution"
       "ai-generator-image-provider"
+      "ai-generator-provider"
       "ai-generator-generate-images"
     ]
       element = @get(id)
@@ -646,6 +693,7 @@ class AppUI
       ["Title", if draft.project? then draft.project.title else ""]
       ["Slug", if draft.project? then draft.project.slug else ""]
       ["Physics", draft.resolvedPhysicsMode or ""]
+      ["Provider", if draft.provider? then "#{draft.provider.name} / #{draft.provider.modelId}" else ""]
       ["Difficulty", if draft.project? then draft.project.difficulty else ""]
       ["Controls", if draft.gameDesign? then (draft.gameDesign.controls or []).join(", ") else ""]
       ["Genre", if draft.gameDesign? then draft.gameDesign.genre else ""]
@@ -786,6 +834,7 @@ class AppUI
     @setAiStatus "Ready: #{if draft.project? then draft.project.title else "generated draft"} (#{draft.resolvedPhysicsMode or "manual"} physics)."
     @renderAiFileTree previewFiles
     @renderAiAssetGallery draft.imageAssets or []
+    @loadAiProviders if draft.request? then draft.request.providerProfileId else null
     selected = @selectAiDraftFile @aiSelectedPath,true
     if not selected and previewFiles.length > 0
       @renderAiPreview previewFiles[0]
@@ -867,6 +916,7 @@ class AppUI
     physics: @get("ai-generator-physics").value
     difficulty: @get("ai-generator-difficulty").value
     artStyle: @get("ai-generator-art-style").value
+    providerProfileId: if @get("ai-generator-provider")? and @get("ai-generator-provider").value.length > 0 then @get("ai-generator-provider").value else null
     generateImages: @get("ai-generator-generate-images").checked
     imageProvider: if @get("ai-generator-image-provider")? then @get("ai-generator-image-provider").value else "placeholder"
     imageStyle: @get("ai-generator-image-style").value
@@ -913,7 +963,7 @@ class AppUI
       return
     @setAiBusy true
     @setAiStatus "Generating draft..."
-    @postAiRequest("/api/ai/generate-game",payload).then((draft)=>
+    @postAiRequest("/api/ai/game-generator",payload).then((draft)=>
       @setAiBusy false
       @renderAiDraft draft
       @selectAiDraftFile(if draft.preview? and draft.preview.length > 0 then draft.preview[0].path else null)
@@ -1210,6 +1260,7 @@ class AppUI
       text += " <a href='https://microstudio.dev/community/tips/your-account-is-out-of-space/109/' target='_blank'>#{@app.translator.get("More info...")}</a>"
       @addWarningMessage text,undefined,"out_of_storage",false
     @updateAiProviderVisibility()
+    @loadAiProviders()
     #if not @project?
     #  @show "myprojects"
     #  @hide "projectview"
@@ -1434,6 +1485,7 @@ class AppUI
     @updateActiveUsers()
     @doc_splitbar.initPosition(50)
     @updateAiProviderVisibility()
+    @loadAiProviders(if @aiDraft? and @aiDraft.request? then @aiDraft.request.providerProfileId else null)
 
   updateAiProviderVisibility:()->
     row = @get("ai-generator-image-provider-row")

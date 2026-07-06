@@ -543,6 +543,7 @@ AppUI = class AppUI {
     this.aiDraftImageById = {};
     this.aiSelectedPath = null;
     this.aiBusy = false;
+    this.aiProviderProfiles = [];
     this.setAction("ai-generator-generate", () => {
       return this.generateAiDraft();
     });
@@ -611,6 +612,9 @@ AppUI = class AppUI {
     this.get("ai-generator-image-provider").addEventListener("change", () => {
       return this.updateAiGeneratorButtons();
     });
+    this.get("ai-generator-provider").addEventListener("change", () => {
+      return this.updateAiGeneratorButtons();
+    });
     ref = ["ai-generator-idea", "ai-generator-language", "ai-generator-physics", "ai-generator-difficulty", "ai-generator-art-style", "ai-generator-image-style", "ai-generator-aspect-ratio"];
     for (i = 0, len = ref.length; i < len; i++) {
       path = ref[i];
@@ -622,6 +626,7 @@ AppUI = class AppUI {
       });
     }
     this.updateAiProviderVisibility();
+    this.loadAiProviders();
     return this.renderAiDraft(null);
   }
 
@@ -679,6 +684,57 @@ AppUI = class AppUI {
     element.textContent = text || "";
   }
 
+  loadAiProviders(selectedId = null) {
+    var select;
+    select = this.get("ai-generator-provider");
+    if (select == null) {
+      return Promise.resolve([]);
+    }
+    return fetch("/api/ai/providers/public?purpose=text", {
+      credentials: "same-origin"
+    }).then((response) => {
+      return response.text().then((text) => {
+        var data, err, providers, wanted;
+        data = null;
+        if (text != null && text.length > 0) {
+          try {
+            data = JSON.parse(text);
+          } catch (error) {
+            data = {
+              error: text
+            };
+          }
+        }
+        if (!response.ok) {
+          err = new Error((data != null ? data.error : void 0) || response.statusText || "Request failed");
+          err.response = data;
+          throw err;
+        }
+        providers = Array.isArray(data != null ? data.providers : void 0) ? data.providers : [];
+        this.aiProviderProfiles = providers;
+        wanted = selectedId != null ? String(selectedId) : select.value;
+        select.innerHTML = "";
+        select.appendChild(new Option("Use server default", ""));
+        for (var i = 0, len = providers.length; i < len; i++) {
+          var provider = providers[i];
+          select.appendChild(new Option(`${provider.name}${provider.modelId ? ` (${provider.modelId})` : ""}`, String(provider.id)));
+        }
+        if (wanted) {
+          select.value = wanted;
+        } else {
+          selectedId = providers.find((provider) => provider.isDefault);
+          select.value = selectedId != null ? String(selectedId.id) : "";
+        }
+        return providers;
+      });
+    }, (err) => {
+      this.aiProviderProfiles = [];
+      select.innerHTML = "";
+      select.appendChild(new Option("Use server default", ""));
+      return [];
+    });
+  }
+
   updateAiGeneratorButtons() {
     var canApply, canExplain, canGenerate, canRegenerate, draftReady, element, i, len, ref, targetMode;
     draftReady = this.aiDraft != null;
@@ -710,7 +766,7 @@ AppUI = class AppUI {
           element.disabled = !canExplain;
       }
     }
-    ref = ["ai-generator-image-style", "ai-generator-transparent-sprites", "ai-generator-asset-resolution", "ai-generator-image-provider", "ai-generator-generate-images"];
+    ref = ["ai-generator-image-style", "ai-generator-transparent-sprites", "ai-generator-asset-resolution", "ai-generator-image-provider", "ai-generator-provider", "ai-generator-generate-images"];
     for (i = 0, len = ref.length; i < len; i++) {
       element = this.get(ref[i]);
       if (element == null) {
@@ -754,6 +810,7 @@ AppUI = class AppUI {
       ["Title", draft.project != null ? draft.project.title : ""],
       ["Slug", draft.project != null ? draft.project.slug : ""],
       ["Physics", draft.resolvedPhysicsMode || ""],
+      ["Provider", draft.provider != null ? `${draft.provider.name} / ${draft.provider.modelId}` : ""],
       ["Difficulty", draft.project != null ? draft.project.difficulty : ""],
       ["Controls", draft.gameDesign != null ? (draft.gameDesign.controls || []).join(", ") : ""],
       ["Genre", draft.gameDesign != null ? draft.gameDesign.genre : ""],
@@ -935,6 +992,7 @@ AppUI = class AppUI {
     this.setAiStatus(`Ready: ${draft.project != null ? draft.project.title : "generated draft"} (${draft.resolvedPhysicsMode || "manual"} physics).`);
     this.renderAiFileTree(previewFiles);
     this.renderAiAssetGallery(draft.imageAssets || []);
+    this.loadAiProviders(draft.request != null ? draft.request.providerProfileId : null);
     selected = this.selectAiDraftFile(this.aiSelectedPath, true);
     if (!selected && previewFiles.length > 0) {
       this.renderAiPreview(previewFiles[0]);
@@ -1050,6 +1108,7 @@ AppUI = class AppUI {
       physics: this.get("ai-generator-physics").value,
       difficulty: this.get("ai-generator-difficulty").value,
       artStyle: this.get("ai-generator-art-style").value,
+      providerProfileId: this.get("ai-generator-provider") != null && this.get("ai-generator-provider").value.length > 0 ? this.get("ai-generator-provider").value : null,
       generateImages: this.get("ai-generator-generate-images").checked,
       imageProvider: this.get("ai-generator-image-provider") != null ? this.get("ai-generator-image-provider").value : "placeholder",
       imageStyle: this.get("ai-generator-image-style").value,
@@ -1112,7 +1171,7 @@ AppUI = class AppUI {
     }
     this.setAiBusy(true);
     this.setAiStatus("Generating draft...");
-    return this.postAiRequest("/api/ai/generate-game", payload).then((draft) => {
+    return this.postAiRequest("/api/ai/game-generator", payload).then((draft) => {
       this.setAiBusy(false);
       this.renderAiDraft(draft);
       return this.selectAiDraftFile(draft.preview != null && draft.preview.length > 0 ? draft.preview[0].path : null);
@@ -1477,6 +1536,7 @@ AppUI = class AppUI {
       this.addWarningMessage(text, void 0, "out_of_storage", false);
     }
     this.updateAiProviderVisibility();
+    this.loadAiProviders();
   }
 
   //if not @project?
@@ -1711,6 +1771,7 @@ AppUI = class AppUI {
     this.app.runwindow.terminal.start();
     this.updateActiveUsers();
     this.updateAiProviderVisibility();
+    this.loadAiProviders((this.aiDraft != null && this.aiDraft.request != null ? this.aiDraft.request.providerProfileId : null) || null);
     return this.doc_splitbar.initPosition(50);
   }
 

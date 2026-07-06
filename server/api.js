@@ -1,4 +1,5 @@
 const express = require("express");
+const { AiGatewayManager } = require("./ai/ai_gateway_manager.js");
 const { AiGameGeneratorService } = require("./ai/game_generator.js");
 
 this.API = (function() {
@@ -6,7 +7,9 @@ this.API = (function() {
     this.server = server;
     this.webapp = webapp;
     this.app = this.webapp.app;
-    this.ai = new AiGameGeneratorService(this.server, this.webapp);
+    this.gateway = this.server.aiGateway || new AiGatewayManager(this.server);
+    this.server.aiGateway = this.gateway;
+    this.ai = new AiGameGeneratorService(this.server, this.webapp, this.gateway);
 
     this.app.use(express.json({ limit: "2mb" }));
     this.app.use(express.urlencoded({ extended: true, limit: "2mb" }));
@@ -71,6 +74,14 @@ this.API = (function() {
       return res.send(JSON.stringify(response, null, 2));
     });
 
+    this.app.get(/^\/api\/ai\/providers\/public\/?$/, async (req, res) => {
+      return this.handlePublicAiProviders(req, res);
+    });
+
+    this.app.post(/^\/api\/ai\/game-generator\/?$/, async (req, res) => {
+      return this.handleAiGenerate(req, res);
+    });
+
     this.app.post(/^\/api\/ai\/generate-game\/?$/, async (req, res) => {
       return this.handleAiGenerate(req, res);
     });
@@ -90,6 +101,34 @@ this.API = (function() {
     this.app.post(/^\/api\/ai\/apply-game\/?$/, async (req, res) => {
       return this.handleAiApply(req, res);
     });
+
+    this.app.get(/^\/api\/admin\/ai\/providers\/?$/, async (req, res) => {
+      return this.handleAdminAiProviders(req, res);
+    });
+
+    this.app.post(/^\/api\/admin\/ai\/providers\/?$/, async (req, res) => {
+      return this.handleAdminCreateAiProvider(req, res);
+    });
+
+    this.app.get(/^\/api\/admin\/ai\/providers\/(\d+)\/?$/, async (req, res) => {
+      return this.handleAdminGetAiProvider(req, res);
+    });
+
+    this.app.patch(/^\/api\/admin\/ai\/providers\/(\d+)\/?$/, async (req, res) => {
+      return this.handleAdminUpdateAiProvider(req, res);
+    });
+
+    this.app.delete(/^\/api\/admin\/ai\/providers\/(\d+)\/?$/, async (req, res) => {
+      return this.handleAdminDeleteAiProvider(req, res);
+    });
+
+    this.app.post(/^\/api\/admin\/ai\/providers\/(\d+)\/test\/?$/, async (req, res) => {
+      return this.handleAdminTestAiProvider(req, res);
+    });
+
+    this.app.post(/^\/api\/admin\/ai\/providers\/(\d+)\/set-default\/?$/, async (req, res) => {
+      return this.handleAdminSetDefaultAiProvider(req, res);
+    });
   }
 
   API.prototype.getCurrentUser = function(req) {
@@ -103,6 +142,20 @@ this.API = (function() {
     return null;
   };
 
+  API.prototype.ensureAdmin = function(req, res) {
+    var user;
+    user = this.getCurrentUser(req);
+    if (user == null) {
+      this.sendError(res, 401, "not connected");
+      return null;
+    }
+    if (!(user.flags != null && user.flags.admin)) {
+      this.sendError(res, 403, "admin only");
+      return null;
+    }
+    return user;
+  };
+
   API.prototype.sendError = function(res, status, error) {
     return res.status(status).json({
       name: "error",
@@ -114,12 +167,24 @@ this.API = (function() {
     var message, status;
     message = err != null && err.message != null ? err.message : "Unexpected error";
     status = 500;
-    if (/idea is required|draft not found|image asset not found|target project id is required|target project not found|You must own the target project|You must own the target draft/i.test(message)) {
+    if (/idea is required|draft not found|image asset not found|target project id is required|target project not found|You must own the target project|You must own the target draft|Requested provider profile not found|Requested provider profile is disabled|Requested provider profile is not available for this purpose|No AI provider configured|Provider not found/i.test(message)) {
       status = 400;
-    } else if (/OPENAI_API_KEY|provider|OpenAI request failed/i.test(message)) {
+    } else if (/OPENAI_API_KEY|provider|OpenAI request failed|AI provider request failed/i.test(message)) {
       status = 502;
     }
     return this.sendError(res, status, message);
+  };
+
+  API.prototype.handlePublicAiProviders = function(req, res) {
+    var purpose, user;
+    user = this.getCurrentUser(req);
+    if (user == null) {
+      return this.sendError(res, 401, "not connected");
+    }
+    purpose = typeof req.query.purpose === "string" ? req.query.purpose : "text";
+    return res.json({
+      providers: this.gateway.listPublicProviders(purpose)
+    });
   };
 
   API.prototype.handleAiGenerate = async function(req, res) {
@@ -231,6 +296,105 @@ this.API = (function() {
         return this.sendError(res, 400, "assetId is required");
       }
       return res.json(await this.ai.regenerateImageAsset(req.body.draftId, req.body.assetId, req.body, user));
+    } catch (err) {
+      return this.handleAiError(res, err);
+    }
+  };
+
+  API.prototype.handleAdminAiProviders = function(req, res) {
+    var purpose, user;
+    user = this.ensureAdmin(req, res);
+    if (user == null) {
+      return;
+    }
+    purpose = typeof req.query.purpose === "string" ? req.query.purpose : null;
+    return res.json({
+      providers: this.gateway.listAdminProviders(purpose)
+    });
+  };
+
+  API.prototype.handleAdminGetAiProvider = function(req, res) {
+    var user;
+    user = this.ensureAdmin(req, res);
+    if (user == null) {
+      return;
+    }
+    return res.json({
+      provider: this.gateway.getProvider(req.params[0])
+    });
+  };
+
+  API.prototype.handleAdminCreateAiProvider = function(req, res) {
+    var user;
+    user = this.ensureAdmin(req, res);
+    if (user == null) {
+      return;
+    }
+    try {
+      return res.json({
+        provider: this.gateway.createProvider(req.body || {})
+      });
+    } catch (err) {
+      return this.handleAiError(res, err);
+    }
+  };
+
+  API.prototype.handleAdminUpdateAiProvider = function(req, res) {
+    var provider, user;
+    user = this.ensureAdmin(req, res);
+    if (user == null) {
+      return;
+    }
+    try {
+      provider = this.gateway.updateProvider(req.params[0], req.body || {});
+      if (provider == null) {
+        return this.sendError(res, 404, "provider not found");
+      }
+      return res.json({
+        provider: provider
+      });
+    } catch (err) {
+      return this.handleAiError(res, err);
+    }
+  };
+
+  API.prototype.handleAdminDeleteAiProvider = function(req, res) {
+    var user;
+    user = this.ensureAdmin(req, res);
+    if (user == null) {
+      return;
+    }
+    if (!this.gateway.deleteProvider(req.params[0])) {
+      return this.sendError(res, 404, "provider not found");
+    }
+    return res.json({
+      ok: true
+    });
+  };
+
+  API.prototype.handleAdminSetDefaultAiProvider = function(req, res) {
+    var provider, user;
+    user = this.ensureAdmin(req, res);
+    if (user == null) {
+      return;
+    }
+    provider = this.gateway.setDefaultProvider(req.params[0]);
+    if (provider == null) {
+      return this.sendError(res, 404, "provider not found");
+    }
+    return res.json({
+      provider: provider
+    });
+  };
+
+  API.prototype.handleAdminTestAiProvider = async function(req, res) {
+    var user;
+    user = this.ensureAdmin(req, res);
+    if (user == null) {
+      return;
+    }
+    try {
+      return res.json(await this.gateway.testProvider(req.params[0], user.id));
     } catch (err) {
       return this.handleAiError(res, err);
     }

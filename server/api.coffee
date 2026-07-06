@@ -1,10 +1,13 @@
 express = require "express"
+{AiGatewayManager} = require "./ai/ai_gateway_manager.js"
 {AiGameGeneratorService} = require "./ai/game_generator.js"
 
 class @API
   constructor:(@server,@webapp)->
     @app = @webapp.app
-    @ai = new AiGameGeneratorService @server,@webapp
+    @gateway = @server.aiGateway or new AiGatewayManager @server
+    @server.aiGateway = @gateway
+    @ai = new AiGameGeneratorService @server,@webapp,@gateway
 
     @app.use express.json limit: "2mb"
     @app.use express.urlencoded extended: true, limit: "2mb"
@@ -58,6 +61,12 @@ class @API
 
       res.send JSON.stringify response,null,2
 
+    @app.get /^\/api\/ai\/providers\/public\/?$/, (req,res)=>
+      @handlePublicAiProviders req,res
+
+    @app.post /^\/api\/ai\/game-generator\/?$/, (req,res)=>
+      @handleAiGenerate req,res
+
     @app.post /^\/api\/ai\/generate-game\/?$/, (req,res)=>
       @handleAiGenerate req,res
 
@@ -73,12 +82,43 @@ class @API
     @app.post /^\/api\/ai\/apply-game\/?$/, (req,res)=>
       @handleAiApply req,res
 
+    @app.get /^\/api\/admin\/ai\/providers\/?$/, (req,res)=>
+      @handleAdminAiProviders req,res
+
+    @app.post /^\/api\/admin\/ai\/providers\/?$/, (req,res)=>
+      @handleAdminCreateAiProvider req,res
+
+    @app.get /^\/api\/admin\/ai\/providers\/(\d+)\/?$/, (req,res)=>
+      @handleAdminGetAiProvider req,res
+
+    @app.patch /^\/api\/admin\/ai\/providers\/(\d+)\/?$/, (req,res)=>
+      @handleAdminUpdateAiProvider req,res
+
+    @app.delete /^\/api\/admin\/ai\/providers\/(\d+)\/?$/, (req,res)=>
+      @handleAdminDeleteAiProvider req,res
+
+    @app.post /^\/api\/admin\/ai\/providers\/(\d+)\/test\/?$/, (req,res)=>
+      @handleAdminTestAiProvider req,res
+
+    @app.post /^\/api\/admin\/ai\/providers\/(\d+)\/set-default\/?$/, (req,res)=>
+      @handleAdminSetDefaultAiProvider req,res
+
   getCurrentUser:(req)->
     if req.cookies? and typeof req.cookies.token == "string" and req.cookies.token.length > 0
       token = @server.content.findToken req.cookies.token
       if token? and token.user? and not token.user.flags.deleted
         return token.user
     null
+
+  ensureAdmin:(req,res)->
+    user = @getCurrentUser req
+    if not user?
+      @sendError res,401,"not connected"
+      return null
+    if not (user.flags? and user.flags.admin)
+      @sendError res,403,"admin only"
+      return null
+    user
 
   sendError:(res,status,error)->
     res.status(status).json
@@ -88,11 +128,18 @@ class @API
   handleAiError:(res,err)->
     message = if err?.message? then err.message else "Unexpected error"
     status = 500
-    if /idea is required|draft not found|image asset not found|target project id is required|target project not found|You must own the target project|You must own the target draft/i.test message
+    if /idea is required|draft not found|image asset not found|target project id is required|target project not found|You must own the target project|You must own the target draft|Requested provider profile not found|Requested provider profile is disabled|Requested provider profile is not available for this purpose|No AI provider configured|Provider not found/i.test message
       status = 400
-    else if /OPENAI_API_KEY|provider|OpenAI request failed/i.test message
+    else if /OPENAI_API_KEY|provider|OpenAI request failed|AI provider request failed/i.test message
       status = 502
     @sendError res,status,message
+
+  handlePublicAiProviders:(req,res)->
+    user = @getCurrentUser req
+    return @sendError res,401,"not connected" if not user?
+    purpose = if typeof req.query?.purpose == "string" then req.query.purpose else "text"
+    res.json
+      providers: @gateway.listPublicProviders purpose
 
   handleAiGenerate:(req,res)->
     user = @getCurrentUser req
@@ -154,6 +201,63 @@ class @API
     @ai.regenerateImageAsset(req.body.draftId,req.body.assetId,req.body,user).then((result)=>
       res.json result
     ).catch((err)=>
+      @handleAiError res,err
+    )
+
+  handleAdminAiProviders:(req,res)->
+    user = @ensureAdmin req,res
+    return if not user?
+    purpose = if typeof req.query?.purpose == "string" then req.query.purpose else null
+    res.json
+      providers: @gateway.listAdminProviders purpose
+
+  handleAdminGetAiProvider:(req,res)->
+    user = @ensureAdmin req,res
+    return if not user?
+    res.json
+      provider: @gateway.getProvider req.params[0]
+
+  handleAdminCreateAiProvider:(req,res)->
+    user = @ensureAdmin req,res
+    return if not user?
+    try
+      res.json
+        provider: @gateway.createProvider req.body or {}
+    catch err
+      @handleAiError res,err
+
+  handleAdminUpdateAiProvider:(req,res)->
+    user = @ensureAdmin req,res
+    return if not user?
+    try
+      provider = @gateway.updateProvider req.params[0], req.body or {}
+      return @sendError res,404,"provider not found" if not provider?
+      res.json
+        provider: provider
+    catch err
+      @handleAiError res,err
+
+  handleAdminDeleteAiProvider:(req,res)->
+    user = @ensureAdmin req,res
+    return if not user?
+    return @sendError res,404,"provider not found" if not @gateway.deleteProvider req.params[0]
+    res.json
+      ok: true
+
+  handleAdminSetDefaultAiProvider:(req,res)->
+    user = @ensureAdmin req,res
+    return if not user?
+    provider = @gateway.setDefaultProvider req.params[0]
+    return @sendError res,404,"provider not found" if not provider?
+    res.json
+      provider: provider
+
+  handleAdminTestAiProvider:(req,res)->
+    user = @ensureAdmin req,res
+    return if not user?
+    @gateway.testProvider(req.params[0],user.id).then((result)=>
+      res.json result
+    ,(err)=>
       @handleAiError res,err
     )
 

@@ -495,6 +495,10 @@ html(lang=language)
                           option(value="apply_to_current_project" selected) #{translator.get("Current project")}
                           option(value="new_project") #{translator.get("New project")}
                       div
+                        label(for="ai-generator-provider") #{translator.get("Provider")}
+                        select#ai-generator-provider
+                          option(value="") #{translator.get("Use server default")}
+                      div
                         label
                           input#ai-generator-generate-images(type="checkbox")
                           |  #{translator.get("Generate game images")}

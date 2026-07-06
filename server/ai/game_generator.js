@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const Jimp = require("jimp");
 const { OpenAIProvider } = require("./provider_openai.js");
+const { AiGatewayManager } = require("./ai_gateway_manager.js");
 const {
   PlaceholderImageProvider,
   OpenAIImageProvider,
@@ -363,10 +364,10 @@ function createPreviewDataUrl(buffer) {
 }
 
 class AiGameGeneratorService {
-  constructor(server, webapp) {
+  constructor(server, webapp, gateway = null) {
     this.server = server;
     this.webapp = webapp;
-    this.provider = new OpenAIProvider();
+    this.gateway = gateway || (server && server.aiGateway ? server.aiGateway : new AiGatewayManager(server));
     this.draftTable = "ai_game_drafts";
     this.backupTable = "ai_game_backups";
     this.imageProviders = {
@@ -449,6 +450,7 @@ class AiGameGeneratorService {
       imageStyle: normalizeImageStyle(typeof input.imageStyle === "string" ? input.imageStyle : "pixel-art"),
       transparentSprites: input.transparentSprites !== false,
       assetResolution: normalizeAssetResolution(typeof input.assetResolution === "string" ? input.assetResolution : "64x64"),
+      providerProfileId: input.providerProfileId != null ? String(input.providerProfileId) : null,
       targetProjectId: input.targetProjectId != null ? String(input.targetProjectId) : null,
       mode: normalizeMode(input.mode),
       constraints: {
@@ -574,15 +576,27 @@ class AiGameGeneratorService {
       }, null, 2)
     ].join("\n");
 
-    const providerJson = await this.provider.generate([
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt }
-    ], {
-      maxTokens: 5000
+    const providerResult = await this.gateway.generate({
+      feature: "game-generator",
+      purpose: "text",
+      providerProfileId: request.providerProfileId,
+      responseFormat: "json",
+      temperature: 0.2,
+      maxTokens: 5000,
+      userId: user && user.id != null ? user.id : null,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ]
     });
 
-    const parsed = this.parseModelJson(providerJson);
+    const parsed = this.parseModelJson(providerResult.content);
     const normalized = await this.validateGeneratedProject(parsed, request, resolvedPhysics, user);
+    normalized.provider = {
+      id: providerResult.providerId,
+      name: providerResult.providerName,
+      modelId: providerResult.modelId
+    };
     const targetProject = request.mode === "apply_to_current_project" ? this.getProject(request.targetProjectId) : null;
     const draft = await this.createProjectDraft(user, request, normalized, targetProject, resolvedPhysics);
     return draft;
@@ -1255,6 +1269,7 @@ class AiGameGeneratorService {
       targetProjectId: request.mode === "apply_to_current_project" ? request.targetProjectId : null,
       generatedAt: normalized.generatedAt,
       resolvedPhysicsMode: normalized.resolvedPhysicsMode,
+      provider: normalized.provider || null,
       project: normalized.project,
       gameDesign: normalized.gameDesign,
       imageAssets: normalized.imageAssets || [],
@@ -1264,7 +1279,8 @@ class AiGameGeneratorService {
         imageAssets: normalized.imageAssets || [],
         warnings: normalized.warnings,
         nextSteps: normalized.nextSteps,
-        resolvedPhysicsMode: normalized.resolvedPhysicsMode
+        resolvedPhysicsMode: normalized.resolvedPhysicsMode,
+        provider: normalized.provider || null
       }),
       warnings: normalized.warnings,
       nextSteps: normalized.nextSteps,
@@ -1400,6 +1416,7 @@ class AiGameGeneratorService {
       gameDesign: record.gameDesign,
       modelJson: record.modelJson || null,
       imageAssets: record.imageAssets || [],
+      provider: record.provider || null,
       warnings: record.warnings || [],
       nextSteps: record.nextSteps || [],
       resolvedPhysicsMode: record.resolvedPhysicsMode,
@@ -1528,15 +1545,22 @@ class AiGameGeneratorService {
       `Warnings: ${JSON.stringify(draft.warnings || [])}`,
       `Next steps: ${JSON.stringify(draft.nextSteps || [])}`
     ].join("\n");
-    const content = await this.provider.generate([
-      { role: "system", content: "You explain generated starter games clearly and briefly. Do not output markdown fences." },
-      { role: "user", content: prompt }
-    ], {
-      maxTokens: 1200
+    const result = await this.gateway.generate({
+      feature: "game-generator-explain",
+      purpose: "text",
+      providerProfileId: draft.request ? draft.request.providerProfileId : null,
+      responseFormat: "text",
+      temperature: 0.2,
+      maxTokens: 1200,
+      userId: user && user.id != null ? user.id : null,
+      messages: [
+        { role: "system", content: "You explain generated starter games clearly and briefly. Do not output markdown fences." },
+        { role: "user", content: prompt }
+      ]
     });
     return {
       draftId,
-      explanation: content
+      explanation: result.content
     };
   }
 
