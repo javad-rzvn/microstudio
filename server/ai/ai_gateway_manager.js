@@ -17,6 +17,7 @@ function now() {
 function safeError(message) {
   const err = new Error(message);
   err.safe = true;
+  err.status = 500;
   return err;
 }
 
@@ -249,7 +250,7 @@ class AiGatewayManager {
         baseUrl: provider.baseUrl,
         apiKey: provider.apiKey,
         modelId: provider.modelId,
-        timeoutMs: provider.timeoutMs
+        timeoutMs: input.timeoutMs != null ? input.timeoutMs : provider.timeoutMs
       }, {
         messages,
         temperature: input.temperature,
@@ -287,7 +288,11 @@ class AiGatewayManager {
         success: false,
         errorMessage: String(err && err.message ? err.message : "Provider request failed").slice(0, 500)
       });
-      throw safeError("AI provider request failed");
+      const detail = String(err && err.message ? err.message : "Provider request failed").trim().slice(0, 200);
+      const status = /timed out/i.test(detail) ? 504 : /invalid JSON/i.test(detail) ? 502 : 502;
+      const wrapped = safeError(`AI provider request failed${detail ? `: ${detail}` : ""}`);
+      wrapped.status = status;
+      throw wrapped;
     }
   }
 

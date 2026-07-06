@@ -542,7 +542,8 @@ class FixErrorService {
       providerProfileId: request.options.providerProfileId,
       responseFormat: "json",
       temperature: 0.1,
-      maxTokens: 4500,
+      maxTokens: 2000,
+      timeoutMs: 30000,
       userId: user && user.id != null ? user.id : null,
       messages: [
         { role: "system", content: this.buildSystemPrompt() },
