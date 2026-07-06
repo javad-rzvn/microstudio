@@ -1,13 +1,14 @@
 doctype html
-html(lang=language)
+html(lang=language, dir=language == "fa" ? "rtl" : "ltr")
   head
     meta(name="description" content=description)
     meta(name="viewport" content="width=device-width, user-scalable=no, initial-scale=1")
-    link(rel="alternate" hreflang="pt" href="https://microstudio.dev/ru/")
+    link(rel="alternate" hreflang="ru" href="https://microstudio.dev/ru/")
     link(rel="alternate" hreflang="pt" href="https://microstudio.dev/pt/")
     link(rel="alternate" hreflang="it" href="https://microstudio.dev/it/")
     link(rel="alternate" hreflang="de" href="https://microstudio.dev/de/")
     link(rel="alternate" hreflang="pl" href="https://microstudio.dev/pl/")
+    link(rel="alternate" hreflang="fa" href="https://microstudio.dev/fa/")
     link(rel="alternate" hreflang="fr" href="https://microstudio.dev/fr/")
     link(rel="alternate" hreflang="en" href="https://microstudio.dev")
     title #{title}
@@ -119,7 +120,7 @@ html(lang=language)
         //- li#menu-play(title=translator.get("Play")) <i class="fa fa-gamepad"></i><br /><span>#{translator.get("Play")}</span>
         li#menu-tutorials(title=translator.get("Tutorials")) <i class="fa fa-lightbulb"></i><br /><span>#{translator.get("Tutorials")}</span>
         li#menu-help(title=translator.get("Documentation")) <i class="fa fa-book-open"></i><br /><span>#{translator.get("Documentation")}</span>
-        a(target="_blank" href=language == "fr" ? "/fr/community/" : "/community/")
+        a(target="_blank" href=language == "en" ? "/community/" : "/"+language+"/community/")
           li#menu-community(title=translator.get("Community")) <i class="fa fa-users"></i><br /><span>#{translator.get("Community")}</span>
         a(target="_blank" href="https://discord.com/invite/BDMqjxd")
           li#menu-community(title="Discord") <i class="fab fa-discord"></i><br /><span>Discord</span>

@@ -98,7 +98,7 @@ this.Documentation = class Documentation {
     if (this.sections[id] != null) {
       return callback(this.sections[id]);
     }
-    if ((ref1 = !lang) === "fr" || ref1 === "de" || ref1 === "pl" || ref1 === "it" || ref1 === "pt" || ref1 === "ru") {
+    if ((ref1 = !lang) === "fr" || ref1 === "fa" || ref1 === "de" || ref1 === "pl" || ref1 === "it" || ref1 === "pt" || ref1 === "ru") {
       lang = "en";
     }
     req = new XMLHttpRequest();

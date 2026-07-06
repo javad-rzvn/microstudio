@@ -70,7 +70,7 @@ class @Documentation
     if @sections[id]?
       return callback @sections[id]
 
-    if not lang in ["fr","de","pl","it","pt","ru"]
+    if not lang in ["fr","fa","de","pl","it","pt","ru"]
       lang = "en"
 
     req = new XMLHttpRequest()

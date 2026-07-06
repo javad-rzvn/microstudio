@@ -1,8 +1,9 @@
 doctype html
-html(lang=language)
+html(lang=language, dir=language == "fa" ? "rtl" : "ltr")
   head
     meta(name="description" content=description)
     meta(name="viewport" content="width=device-width, user-scalable=no, initial-scale=.8")
+    link(rel="alternate" hreflang="fa" href="https://microstudio.dev/fa/community/")
     link(rel="alternate" hreflang="fr" href="https://microstudio.dev/fr/community/")
     link(rel="alternate" hreflang="en" href="https://microstudio.dev/community/")
     title #{name} - microStudio

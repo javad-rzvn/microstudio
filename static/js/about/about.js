@@ -58,7 +58,7 @@ this.About = class About {
         }
       }
     };
-    if (((ref = this.app.translator.lang) === "fr" || ref === "it" || ref === "pt") && section !== "changelog") {
+    if (((ref = this.app.translator.lang) === "fr" || ref === "fa" || ref === "it" || ref === "pt") && section !== "changelog") {
       req.open("GET", location.origin + `/doc/${this.app.translator.lang}/${section}.md`);
     } else {
       req.open("GET", location.origin + `/doc/en/${section}.md`);
