@@ -538,8 +538,10 @@ this.RunWindow = class RunWindow {
               return this.app.project.notifyListeners("annotations");
             }
           }
-          if ((this.latestError != null) && this.latestError.file === msg.file) {
-            this.clearLatestError();
+          if (this.latestError != null) {
+            if (String(this.latestError.file || "").replace(/^ms\//, "").replace(/\.ms$/i, "") === String(msg.file || "").replace(/^ms\//, "").replace(/\.ms$/i, "")) {
+              this.clearLatestError();
+            }
           }
           break;
         case "log":

@@ -632,9 +632,10 @@ html(lang=language, dir=language == "fa" ? "rtl" : "ltr")
           div.fix-error-title-block
             h2 #{translator.get("Fix My Error")}
             p#fix-error-state-description #{translator.get("Collect an error, review the code context, and approve a patch before it is written.")}
+            p#fix-error-status.fix-error-status
           div.fix-error-header-actions
             span#fix-error-state.fix-error-state-pill idle
-            button#fix-error-close(type="button")
+            button#fix-error-close(type="button" title=translator.get("Close"))
               i.fa.fa-times
         div.fix-error-meta-row
           div
@@ -662,7 +663,7 @@ html(lang=language, dir=language == "fa" ? "rtl" : "ltr")
               textarea#fix-error-selected-code(readonly rows="8" spellcheck="false")
             div.fix-error-card
               h3 #{translator.get("Intent")}
-              textarea#fix-error-intent(rows="4" placeholder="Tell AI what you were trying to do before the error appeared.")
+              textarea#fix-error-intent(rows="4" placeholder=translator.get("Tell AI what you were trying to do before the error appeared."))
               div.fix-error-options
                 label
                   input#fix-error-include-nearby(type="checkbox" checked)
@@ -687,7 +688,7 @@ html(lang=language, dir=language == "fa" ? "rtl" : "ltr")
           button#fix-error-regenerate(type="button") #{translator.get("Regenerate")}
           button#fix-error-copy(type="button") #{translator.get("Copy Patch")}
           button#fix-error-apply(type="button") #{translator.get("Apply Fix")}
-          button#fix-error-close(type="button") #{translator.get("Cancel")}
+          button#fix-error-cancel(type="button") #{translator.get("Cancel")}
 
     div.overlay#login-overlay
       div#login-window

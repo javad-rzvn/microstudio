@@ -278,6 +278,9 @@ AppUI = class AppUI {
     this.setAction("fix-error-close", () => {
       return this.hideFixErrorDialog();
     });
+    this.setAction("fix-error-cancel", () => {
+      return this.hideFixErrorDialog();
+    });
     overlay = this.get("fix-error-overlay");
     if (overlay != null) {
       overlay.addEventListener("mousedown", (event) => {
@@ -325,7 +328,7 @@ AppUI = class AppUI {
     this.fixErrorConsoleVisible = !!visible;
     button = this.get("console-fix-error-button");
     if (button != null) {
-      button.style.display = visible ? "inline-block" : "none";
+      button.style.display = visible ? "inline-flex" : "none";
     }
     return this.fixErrorConsoleVisible;
   }
@@ -403,7 +406,7 @@ AppUI = class AppUI {
     this.show("fix-error-overlay");
     this.renderFixErrorContext(context);
     this.renderFixErrorProposal(null);
-    this.setFixErrorState("collecting", "Collecting code and error context...");
+    this.setFixErrorState("collecting", this.app.translator.get("Collecting code and error context..."));
     this.updateFixErrorButtons();
     return setTimeout((() => {
       return this.requestFixErrorAnalysis(false);
@@ -439,7 +442,7 @@ AppUI = class AppUI {
       if (context != null && context.error != null && context.error.message != null && context.error.message.length > 0) {
         element.textContent = context.error.message;
       } else {
-        element.textContent = "No structured runtime error was captured yet.";
+        element.textContent = this.app.translator.get("No structured runtime error was captured yet.");
       }
     }
     element = this.get("fix-error-language");
@@ -448,7 +451,7 @@ AppUI = class AppUI {
     }
     element = this.get("fix-error-libraries");
     if (element != null) {
-      element.textContent = context != null && Array.isArray(context.enabledLibraries) && context.enabledLibraries.length > 0 ? context.enabledLibraries.join(", ") : "None";
+      element.textContent = context != null && Array.isArray(context.enabledLibraries) && context.enabledLibraries.length > 0 ? context.enabledLibraries.join(", ") : this.app.translator.get("None");
     }
     return this.updateFixErrorButtons();
   }
@@ -512,7 +515,7 @@ AppUI = class AppUI {
     body = this.buildFixErrorRequest(regenerate);
     this.fixErrorContext = body;
     requestToken = ++this.fixErrorRequestToken;
-    this.setFixErrorState("requesting", regenerate ? "Regenerating fix proposal..." : "Requesting AI fix proposal...");
+    this.setFixErrorState("requesting", regenerate ? this.app.translator.get("Regenerating fix proposal...") : this.app.translator.get("Requesting AI fix proposal..."));
     this.updateFixErrorButtons();
     return this.requestJson("POST", "/api/ai/fix-error", body).then((data) => {
       if (requestToken !== this.fixErrorRequestToken) {
@@ -525,13 +528,13 @@ AppUI = class AppUI {
       }
       if ((err != null ? err.status : void 0) === 409) {
         this.renderFixErrorProposal(null);
-        this.setFixErrorState("conflict", (err != null ? err.message : void 0) || "This file changed after the proposal was generated.");
+        this.setFixErrorState("conflict", (err != null ? err.message : void 0) || this.app.translator.get("This file changed after the proposal was generated."));
       } else if ((err != null ? err.status : void 0) === 422) {
-        this.setFixErrorState("validation_rejected", (err != null ? err.message : void 0) || "The AI proposal was rejected by validation.");
+        this.setFixErrorState("validation_rejected", (err != null ? err.message : void 0) || this.app.translator.get("The AI proposal was rejected by validation."));
       } else if ((err != null ? err.status : void 0) === 429) {
-        this.setFixErrorState("validation_rejected", (err != null ? err.message : void 0) || "Rate limited");
+        this.setFixErrorState("validation_rejected", (err != null ? err.message : void 0) || this.app.translator.get("Rate limited"));
       } else {
-        this.setFixErrorState("validation_rejected", (err != null ? err.message : void 0) || "Failed to generate a fix proposal.");
+        this.setFixErrorState("validation_rejected", (err != null ? err.message : void 0) || this.app.translator.get("Failed to generate a fix proposal."));
       }
       this.updateFixErrorButtons();
       return null;
@@ -542,7 +545,7 @@ AppUI = class AppUI {
     var change, diffText, element, firstChange, proposal, statusMessage, summary;
     proposal = data != null ? data.fix : null;
     if (proposal == null) {
-      this.setFixErrorState("validation_rejected", "The AI response did not include a proposal.");
+      this.setFixErrorState("validation_rejected", this.app.translator.get("The AI response did not include a proposal."));
       this.renderFixErrorProposal(null);
       return null;
     }
@@ -553,7 +556,7 @@ AppUI = class AppUI {
     };
     this.renderFixErrorProposal(this.fixErrorProposal);
     if (proposal.needsMoreContext) {
-      summary = Array.isArray(proposal.questions) && proposal.questions.length > 0 ? proposal.questions.join(" ") : "The AI needs more context before it can propose a safe fix.";
+      summary = Array.isArray(proposal.questions) && proposal.questions.length > 0 ? proposal.questions.join(" ") : this.app.translator.get("The AI needs more context before it can propose a safe fix.");
       this.setFixErrorState("needs_more_context", summary);
     } else {
       firstChange = Array.isArray(proposal.changes) && proposal.changes.length > 0 ? proposal.changes[0] : null;
@@ -566,7 +569,7 @@ AppUI = class AppUI {
           element.value = diffText;
         }
       }
-      this.setFixErrorState("showing_proposal", proposal.summary || "AI proposal ready");
+      this.setFixErrorState("showing_proposal", proposal.summary || this.app.translator.get("AI proposal ready"));
     }
     statusMessage = this.get("fix-error-status-message");
     if (statusMessage != null) {
@@ -615,12 +618,12 @@ AppUI = class AppUI {
     }
     if (container != null) {
       list = [];
-      list.push(`Proposal: ${record.proposalId != null ? record.proposalId : ""}`);
+      list.push(`${this.app.translator.get("Proposal")}: ${record.proposalId != null ? record.proposalId : ""}`);
       if (record.provider != null) {
-        list.push(`Provider: ${record.provider.name || ""}${record.provider.modelId != null ? ` / ${record.provider.modelId}` : ""}`);
+        list.push(`${this.app.translator.get("Provider")}: ${record.provider.name || ""}${record.provider.modelId != null ? ` / ${record.provider.modelId}` : ""}`);
       }
       if (proposal.diagnosis != null && proposal.diagnosis.errorType != null) {
-        list.push(`Type: ${proposal.diagnosis.errorType}`);
+        list.push(`${this.app.translator.get("Type")}: ${proposal.diagnosis.errorType}`);
       }
       container.textContent = list.filter((entry) => entry != null && entry.length > 0).join("  ");
     }
@@ -634,7 +637,7 @@ AppUI = class AppUI {
     }
     if (proposal.needsMoreContext) {
       if (note != null) {
-        note.textContent = Array.isArray(proposal.questions) && proposal.questions.length > 0 ? proposal.questions.join(" ") : "The AI needs more context.";
+        note.textContent = Array.isArray(proposal.questions) && proposal.questions.length > 0 ? proposal.questions.join(" ") : this.app.translator.get("The AI needs more context.");
       }
       if (questions != null && Array.isArray(proposal.questions)) {
         for (i = 0, len = proposal.questions.length; i < len; i++) {
@@ -655,7 +658,7 @@ AppUI = class AppUI {
         note.textContent = proposal.userExplanation || "";
       }
     } else if (note != null) {
-      note.textContent = "No file change was returned.";
+      note.textContent = this.app.translator.get("No file change was returned.");
     }
   }
 
@@ -670,7 +673,7 @@ AppUI = class AppUI {
     if (!Array.isArray(lines) || lines.length === 0) {
       text = document.createElement("div");
       text.classList.add("fix-error-diff-empty");
-      text.textContent = "No diff available.";
+      text.textContent = this.app.translator.get("No diff available.");
       container.appendChild(text);
       return;
     }
@@ -748,7 +751,7 @@ AppUI = class AppUI {
     text = this.buildFixErrorPatchText(proposal.fix.changes[0].path, this.fixErrorContext != null ? this.fixErrorContext.currentFileContent : "", proposal.fix.changes[0].newContent, proposal.fix);
     if (navigator.clipboard != null && typeof navigator.clipboard.writeText === "function") {
       navigator.clipboard.writeText(text).then(() => {
-        return this.showNotification("Patch copied to clipboard");
+        return this.showNotification(this.app.translator.get("Patch copied to clipboard"));
       });
     } else {
       element = document.createElement("textarea");
@@ -760,7 +763,7 @@ AppUI = class AppUI {
       element.select();
       document.execCommand("copy");
       document.body.removeChild(element);
-      this.showNotification("Patch copied to clipboard");
+      this.showNotification(this.app.translator.get("Patch copied to clipboard"));
     }
   }
 
@@ -771,11 +774,11 @@ AppUI = class AppUI {
       return Promise.resolve(null);
     }
     if (proposal.fix.needsMoreContext) {
-      this.setFixErrorState("needs_more_context", "More context is required before applying this fix.");
+      this.setFixErrorState("needs_more_context", this.app.translator.get("More context is required before applying this fix."));
       return Promise.resolve(null);
     }
     if (!Array.isArray(proposal.fix.changes) || proposal.fix.changes.length === 0) {
-      this.setFixErrorState("validation_rejected", "The proposal has no changes to apply.");
+      this.setFixErrorState("validation_rejected", this.app.translator.get("The proposal has no changes to apply."));
       return Promise.resolve(null);
     }
     body = {
@@ -783,15 +786,15 @@ AppUI = class AppUI {
       acceptedChanges: proposal.fix.changes
     };
     requestToken = ++this.fixErrorRequestToken;
-    this.setFixErrorState("applying", "Applying approved change...");
+    this.setFixErrorState("applying", this.app.translator.get("Applying approved change..."));
     this.updateFixErrorButtons();
     return this.requestJson("POST", "/api/ai/fix-error/apply", body).then((data) => {
       if (requestToken !== this.fixErrorRequestToken) {
         return null;
       }
-      this.setFixErrorState("success", "Fix applied successfully.");
+      this.setFixErrorState("success", this.app.translator.get("Fix applied successfully."));
       this.updateFixErrorButtons();
-      this.showNotification("AI fix applied");
+      this.showNotification(this.app.translator.get("AI fix applied"));
       return setTimeout((() => {
         if (this.fixErrorState === "success") {
           return this.hideFixErrorDialog();
@@ -802,11 +805,11 @@ AppUI = class AppUI {
         return null;
       }
       if ((err != null ? err.status : void 0) === 409) {
-        this.setFixErrorState("conflict", (err != null ? err.message : void 0) || "The file changed before the proposal could be applied.");
+        this.setFixErrorState("conflict", (err != null ? err.message : void 0) || this.app.translator.get("The file changed before the proposal could be applied."));
       } else if ((err != null ? err.status : void 0) === 422) {
-        this.setFixErrorState("validation_rejected", (err != null ? err.message : void 0) || "The proposal was rejected by validation.");
+        this.setFixErrorState("validation_rejected", (err != null ? err.message : void 0) || this.app.translator.get("The proposal was rejected by validation."));
       } else {
-        this.setFixErrorState("validation_rejected", (err != null ? err.message : void 0) || "Failed to apply the fix.");
+        this.setFixErrorState("validation_rejected", (err != null ? err.message : void 0) || this.app.translator.get("Failed to apply the fix."));
       }
       this.updateFixErrorButtons();
       return null;
@@ -819,7 +822,17 @@ AppUI = class AppUI {
     this.fixErrorStateMessage = message || "";
     element = this.get("fix-error-state");
     if (element != null) {
-      element.textContent = state.replace(/_/g, " ");
+      element.textContent = this.app.translator.get({
+        idle: "Idle",
+        collecting: "Collecting",
+        requesting: "Requesting",
+        showing_proposal: "Proposal ready",
+        needs_more_context: "Needs more context",
+        validation_rejected: "Validation rejected",
+        conflict: "Conflict",
+        applying: "Applying",
+        success: "Success"
+      }[state] || state.replace(/_/g, " "));
     }
     statusText = this.get("fix-error-status");
     if (statusText != null) {
