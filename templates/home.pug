@@ -531,66 +531,6 @@ html(lang=language, dir=language == "fa" ? "rtl" : "ltr")
                       button#ai-generator-explain #{translator.get("Explain")}
                       button#ai-generator-cancel #{translator.get("Cancel")}
 
-                    div#ai-provider-admin-panel.hidden
-                      div.ai-provider-admin-header
-                        h3 #{translator.get("Provider profiles")}
-                        button#ai-provider-admin-refresh(type="button") #{translator.get("Refresh")}
-                      div.ai-provider-admin-body
-                        div.ai-provider-admin-list
-                          div#ai-provider-admin-list
-                        div.ai-provider-admin-editor
-                          div#ai-provider-admin-status.ai-status
-                          div.ai-provider-admin-grid
-                            div
-                              label(for="ai-provider-name") #{translator.get("Name")}
-                              input#ai-provider-name.input1(type="text" placeholder="OpenAI")
-                            div
-                              label(for="ai-provider-type") #{translator.get("Type")}
-                              select#ai-provider-type.select1
-                                option(value="openai-compatible" selected) openai-compatible
-                                option(value="openai") openai
-                                option(value="litellm") litellm
-                                option(value="ollama") ollama
-                                option(value="lmstudio") lmstudio
-                                option(value="vllm") vllm
-                                option(value="custom") custom
-                            div
-                              label(for="ai-provider-purpose") #{translator.get("Purpose")}
-                              select#ai-provider-purpose.select1
-                                option(value="text" selected) text
-                                option(value="image") image
-                                option(value="both") both
-                            div
-                              label(for="ai-provider-base-url") #{translator.get("Base URL")}
-                              input#ai-provider-base-url.input1(type="text" placeholder="https://api.openai.com/v1")
-                            div
-                              label(for="ai-provider-model-id") #{translator.get("Model ID")}
-                              input#ai-provider-model-id.input1(type="text" placeholder="gpt-4.1-mini")
-                            div
-                              label(for="ai-provider-api-key") #{translator.get("API key")}
-                              input#ai-provider-api-key.input1(type="password" placeholder="leave blank to keep current key")
-                            div
-                              label(for="ai-provider-temperature") #{translator.get("Temperature")}
-                              input#ai-provider-temperature.input1(type="number" min="0" max="2" step="0.1" value="0.3")
-                            div
-                              label(for="ai-provider-max-tokens") #{translator.get("Max tokens")}
-                              input#ai-provider-max-tokens.input1(type="number" min="1" step="1" value="4000")
-                            div
-                              label(for="ai-provider-timeout-ms") #{translator.get("Timeout ms")}
-                              input#ai-provider-timeout-ms.input1(type="number" min="1000" step="1000" value="60000")
-                            div
-                              label
-                                input#ai-provider-enabled(type="checkbox" checked)
-                                |  #{translator.get("Enabled")}
-                            div
-                              label
-                                input#ai-provider-default(type="checkbox")
-                                |  #{translator.get("Default")}
-                          div.ai-generator-buttons
-                            button#ai-provider-save(type="button") #{translator.get("Save provider")}
-                            button#ai-provider-new(type="button") #{translator.get("New provider")}
-                            button#ai-provider-cancel(type="button") #{translator.get("Cancel edit")}
-
                     div#ai-generator-status.ai-status
                     div#ai-generator-warnings.ai-warnings
 
@@ -612,6 +552,66 @@ html(lang=language, dir=language == "fa" ? "rtl" : "ltr")
                     div.ai-generator-explanation
                       h3 #{translator.get("Explanation")}
                       div#ai-generator-explanation-text
+
+                  div#ai-provider-admin-panel.hidden
+                    div.ai-provider-admin-header
+                      h3 #{translator.get("Provider profiles")}
+                      button#ai-provider-admin-refresh(type="button") #{translator.get("Refresh")}
+                    div.ai-provider-admin-body
+                      div.ai-provider-admin-list
+                        div#ai-provider-admin-list
+                      div.ai-provider-admin-editor
+                        div#ai-provider-admin-status.ai-status
+                        div.ai-provider-admin-grid
+                          div
+                            label(for="ai-provider-name") #{translator.get("Name")}
+                            input#ai-provider-name.input1(type="text" placeholder="OpenAI")
+                          div
+                            label(for="ai-provider-type") #{translator.get("Type")}
+                            select#ai-provider-type.select1
+                              option(value="openai-compatible" selected) openai-compatible
+                              option(value="openai") openai
+                              option(value="litellm") litellm
+                              option(value="ollama") ollama
+                              option(value="lmstudio") lmstudio
+                              option(value="vllm") vllm
+                              option(value="custom") custom
+                          div
+                            label(for="ai-provider-purpose") #{translator.get("Purpose")}
+                            select#ai-provider-purpose.select1
+                              option(value="text" selected) text
+                              option(value="image") image
+                              option(value="both") both
+                          div
+                            label(for="ai-provider-base-url") #{translator.get("Base URL")}
+                            input#ai-provider-base-url.input1(type="text" placeholder="https://api.openai.com/v1")
+                          div
+                            label(for="ai-provider-model-id") #{translator.get("Model ID")}
+                            input#ai-provider-model-id.input1(type="text" placeholder="gpt-4.1-mini")
+                          div
+                            label(for="ai-provider-api-key") #{translator.get("API key")}
+                            input#ai-provider-api-key.input1(type="password" placeholder="leave blank to keep current key")
+                          div
+                            label(for="ai-provider-temperature") #{translator.get("Temperature")}
+                            input#ai-provider-temperature.input1(type="number" min="0" max="2" step="0.1" value="0.3")
+                          div
+                            label(for="ai-provider-max-tokens") #{translator.get("Max tokens")}
+                            input#ai-provider-max-tokens.input1(type="number" min="1" step="1" value="4000")
+                          div
+                            label(for="ai-provider-timeout-ms") #{translator.get("Timeout ms")}
+                            input#ai-provider-timeout-ms.input1(type="number" min="1000" step="1000" value="60000")
+                          div
+                            label
+                              input#ai-provider-enabled(type="checkbox" checked)
+                              |  #{translator.get("Enabled")}
+                          div
+                            label
+                              input#ai-provider-default(type="checkbox")
+                              |  #{translator.get("Default")}
+                        div.ai-generator-buttons
+                          button#ai-provider-save(type="button") #{translator.get("Save provider")}
+                          button#ai-provider-new(type="button") #{translator.get("New provider")}
+                          button#ai-provider-cancel(type="button") #{translator.get("Cancel edit")}
 
 
     div.overlay#login-overlay

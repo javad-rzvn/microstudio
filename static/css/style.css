@@ -903,6 +903,7 @@ padding-left: 2px ;
   border-radius: 16px;
   background: rgba(2, 6, 23, .7);
   border: solid 1px rgba(255,255,255,.08);
+  grid-column: 1 / -1;
 }
 
 .ai-provider-admin-header {
