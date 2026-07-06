@@ -1,6 +1,7 @@
 express = require "express"
 {AiGatewayManager} = require "./ai/ai_gateway_manager.js"
 {AiGameGeneratorService} = require "./ai/game_generator.js"
+{FixErrorService} = require "./ai/fix_error.js"
 
 class @API
   constructor:(@server,@webapp)->
@@ -8,6 +9,7 @@ class @API
     @gateway = @server.aiGateway or new AiGatewayManager @server
     @server.aiGateway = @gateway
     @ai = new AiGameGeneratorService @server,@webapp,@gateway
+    @fixError = new FixErrorService @server,@webapp,@gateway
 
     @app.use express.json limit: "2mb"
     @app.use express.urlencoded extended: true, limit: "2mb"
@@ -85,6 +87,12 @@ class @API
     @app.post /^\/api\/ai\/apply-game\/?$/, (req,res)=>
       @handleAiApply req,res
 
+    @app.post /^\/api\/ai\/fix-error\/?$/, (req,res)=>
+      @handleAiFixError req,res
+
+    @app.post /^\/api\/ai\/fix-error\/apply\/?$/, (req,res)=>
+      @handleAiFixErrorApply req,res
+
     @app.get /^\/api\/admin\/ai\/providers\/?$/, (req,res)=>
       @handleAdminAiProviders req,res
 
@@ -130,10 +138,10 @@ class @API
 
   handleAiError:(res,err)->
     message = if err?.message? then err.message else "Unexpected error"
-    status = 500
-    if /idea is required|draft not found|image asset not found|target project id is required|target project not found|You must own the target project|You must own the target draft|Requested provider profile not found|Requested provider profile is disabled|Requested provider profile is not available for this purpose|No AI provider configured|Provider not found/i.test message
+    status = if err?.status? then err.status else 500
+    if status == 500 and /idea is required|draft not found|image asset not found|target project id is required|target project not found|You must own the target project|You must own the target draft|Requested provider profile not found|Requested provider profile is disabled|Requested provider profile is not available for this purpose|No AI provider configured|Provider not found/i.test message
       status = 400
-    else if /OPENAI_API_KEY|provider|OpenAI request failed|AI provider request failed/i.test message
+    else if status == 500 and /OPENAI_API_KEY|provider|OpenAI request failed|AI provider request failed/i.test message
       status = 502
     @sendError res,status,message
 
@@ -189,6 +197,46 @@ class @API
     if mode == "apply_to_current_project" and not req.body.targetProjectId?
       return @sendError res,400,"targetProjectId is required"
     @ai.applyProjectDraft(req.body.draftId,user,req.body.targetProjectId,mode).then((result)=>
+      res.json result
+    ).catch((err)=>
+      @handleAiError res,err
+    )
+
+  handleAiFixError:(req,res)->
+    user = @getCurrentUser req
+    return @sendError res,401,"not connected" if not user?
+    return @sendError res,429,"rate limited" if not @server.rate_limiter.accept "ai_fix_error_ip",req.ip
+    return @sendError res,429,"rate limited" if not @server.rate_limiter.accept "ai_fix_error_user",user.id
+
+    body = req.body or {}
+    previousProposals = []
+    projectId = if body.projectId? then ""+body.projectId else null
+
+    if body.proposalId?
+      previousProposalRecord = @fixError.getProposalRecord ""+body.proposalId
+      return @sendError res,404,"fix proposal not found" if not previousProposalRecord?
+      previousProposal = previousProposalRecord.get()
+      return @sendError res,403,"You do not have permission to reuse this proposal" if previousProposal?.userId != user.id
+      projectId = ""+previousProposal.projectId if not projectId? and previousProposal?.projectId?
+      previousProposals.push previousProposal.fix if previousProposal?.fix?
+
+    return @sendError res,429,"rate limited" if projectId? and not @server.rate_limiter.accept "ai_fix_error_project",projectId
+
+    @fixError.generateFix(Object.assign({},body,
+      previousProposals: previousProposals
+    ),user).then((result)=>
+      res.json result
+    ).catch((err)=>
+      @handleAiError res,err
+    )
+
+  handleAiFixErrorApply:(req,res)->
+    user = @getCurrentUser req
+    return @sendError res,401,"not connected" if not user?
+    return @sendError res,429,"rate limited" if not @server.rate_limiter.accept "ai_apply_ip",req.ip
+    return @sendError res,429,"rate limited" if not @server.rate_limiter.accept "ai_apply_user",user.id
+
+    @fixError.applyFix(req.body or {},user).then((result)=>
       res.json result
     ).catch((err)=>
       @handleAiError res,err

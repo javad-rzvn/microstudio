@@ -424,6 +424,48 @@ a#run-link {
 .code-tools .buttons div:active  {
   background: hsl(160,30%,30%);
 }
+#fix-error-button {
+  background: linear-gradient(180deg, hsl(22,78%,48%) 0%, hsl(22,72%,36%) 100%) !important;
+  color: #FFF;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+}
+#fix-error-button:hover {
+  background: linear-gradient(180deg, hsl(22,82%,58%) 0%, hsl(22,72%,42%) 100%) !important;
+}
+#fix-error-button span {
+  display: inline-block;
+  white-space: nowrap;
+}
+#console-fix-error-button {
+  margin-left: 1px;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, hsl(22,78%,42%) 0%, hsl(22,72%,32%) 100%);
+  color: #FFF;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+#console-fix-error-button:hover {
+  background: linear-gradient(180deg, hsl(22,82%,52%) 0%, hsl(22,72%,38%) 100%);
+}
+#console-fix-error-button span {
+  font-weight: 700;
+  white-space: nowrap;
+}
+@media (max-width: 980px) {
+  #fix-error-button span {
+    display: none;
+  }
+}
+@media (max-width: 720px) {
+  #console-fix-error-button span {
+    display: none;
+  }
+}
 #code-font-plus {
   padding: 8px 11px ;
   height: 24px ;

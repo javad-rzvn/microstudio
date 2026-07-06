@@ -1,6 +1,7 @@
 const express = require("express");
 const { AiGatewayManager } = require("./ai/ai_gateway_manager.js");
 const { AiGameGeneratorService } = require("./ai/game_generator.js");
+const { FixErrorService } = require("./ai/fix_error.js");
 
 this.API = (function() {
   function API(server, webapp) {
@@ -10,6 +11,7 @@ this.API = (function() {
     this.gateway = this.server.aiGateway || new AiGatewayManager(this.server);
     this.server.aiGateway = this.gateway;
     this.ai = new AiGameGeneratorService(this.server, this.webapp, this.gateway);
+    this.fixError = new FixErrorService(this.server, this.webapp, this.gateway);
 
     this.app.use(express.json({ limit: "2mb" }));
     this.app.use(express.urlencoded({ extended: true, limit: "2mb" }));
@@ -106,6 +108,14 @@ this.API = (function() {
       return this.handleAiApply(req, res);
     });
 
+    this.app.post(/^\/api\/ai\/fix-error\/?$/, async (req, res) => {
+      return this.handleAiFixError(req, res);
+    });
+
+    this.app.post(/^\/api\/ai\/fix-error\/apply\/?$/, async (req, res) => {
+      return this.handleAiFixErrorApply(req, res);
+    });
+
     this.app.get(/^\/api\/admin\/ai\/providers\/?$/, async (req, res) => {
       return this.handleAdminAiProviders(req, res);
     });
@@ -170,10 +180,10 @@ this.API = (function() {
   API.prototype.handleAiError = function(res, err) {
     var message, status;
     message = err != null && err.message != null ? err.message : "Unexpected error";
-    status = 500;
-    if (/idea is required|draft not found|image asset not found|target project id is required|target project not found|You must own the target project|You must own the target draft|Requested provider profile not found|Requested provider profile is disabled|Requested provider profile is not available for this purpose|No AI provider configured|Provider not found/i.test(message)) {
+    status = err != null && err.status != null ? err.status : 500;
+    if (status === 500 && /idea is required|draft not found|image asset not found|target project id is required|target project not found|You must own the target project|You must own the target draft|Requested provider profile not found|Requested provider profile is disabled|Requested provider profile is not available for this purpose|No AI provider configured|Provider not found/i.test(message)) {
       status = 400;
-    } else if (/OPENAI_API_KEY|provider|OpenAI request failed|AI provider request failed/i.test(message)) {
+    } else if (status === 500 && /OPENAI_API_KEY|provider|OpenAI request failed|AI provider request failed/i.test(message)) {
       status = 502;
     }
     return this.sendError(res, status, message);
@@ -275,6 +285,68 @@ this.API = (function() {
         return this.sendError(res, 400, "targetProjectId is required");
       }
       return res.json(await this.ai.applyProjectDraft(req.body.draftId, user, req.body.targetProjectId, mode));
+    } catch (err) {
+      return this.handleAiError(res, err);
+    }
+  };
+
+  API.prototype.handleAiFixError = async function(req, res) {
+    var body, previousProposal, previousProposals, projectId, user;
+    user = this.getCurrentUser(req);
+    if (user == null) {
+      return this.sendError(res, 401, "not connected");
+    }
+    if (!this.server.rate_limiter.accept("ai_fix_error_ip", req.ip)) {
+      return this.sendError(res, 429, "rate limited");
+    }
+    if (!this.server.rate_limiter.accept("ai_fix_error_user", user.id)) {
+      return this.sendError(res, 429, "rate limited");
+    }
+    body = req.body || {};
+    previousProposals = [];
+    projectId = body.projectId != null ? String(body.projectId) : null;
+    if (body.proposalId != null) {
+      previousProposal = this.fixError.getProposalRecord(String(body.proposalId));
+      if (previousProposal == null) {
+        return this.sendError(res, 404, "fix proposal not found");
+      }
+      previousProposal = previousProposal.get();
+      if ((previousProposal != null ? previousProposal.userId : void 0) !== user.id) {
+        return this.sendError(res, 403, "You do not have permission to reuse this proposal");
+      }
+      if (projectId == null) {
+        projectId = previousProposal.projectId != null ? String(previousProposal.projectId) : null;
+      }
+      if ((previousProposal != null ? previousProposal.fix : void 0) != null) {
+        previousProposals.push(previousProposal.fix);
+      }
+    }
+    if (projectId != null && !this.server.rate_limiter.accept("ai_fix_error_project", projectId)) {
+      return this.sendError(res, 429, "rate limited");
+    }
+    try {
+      return res.json(await this.fixError.generateFix(Object.assign({}, body, {
+        previousProposals: previousProposals
+      }), user));
+    } catch (err) {
+      return this.handleAiError(res, err);
+    }
+  };
+
+  API.prototype.handleAiFixErrorApply = async function(req, res) {
+    var user;
+    user = this.getCurrentUser(req);
+    if (user == null) {
+      return this.sendError(res, 401, "not connected");
+    }
+    if (!this.server.rate_limiter.accept("ai_apply_ip", req.ip)) {
+      return this.sendError(res, 429, "rate limited");
+    }
+    if (!this.server.rate_limiter.accept("ai_apply_user", user.id)) {
+      return this.sendError(res, 429, "rate limited");
+    }
+    try {
+      return res.json(await this.fixError.applyFix(req.body || {}, user));
     } catch (err) {
       return this.handleAiError(res, err);
     }

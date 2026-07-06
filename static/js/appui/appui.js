@@ -74,6 +74,7 @@ AppUI = class AppUI {
     //@setSection("options")
     this.createLoginFunctions();
     this.createAiGeneratorFunctions();
+    this.createAiFixErrorFunctions();
     this.updateAiProviderVisibility();
     advanced = document.getElementById("advanced-create-project-options-button");
     this.setAction("create-project-button", () => {
@@ -248,6 +249,623 @@ AppUI = class AppUI {
     this.checkRebootMessage();
   }
 
+  createAiFixErrorFunctions() {
+    var overlay;
+    this.fixErrorState = "idle";
+    this.fixErrorProposal = null;
+    this.fixErrorContext = null;
+    this.fixErrorLatestError = null;
+    this.fixErrorConsoleVisible = false;
+    this.fixErrorRequestToken = 0;
+    this.setAction("fix-error-button", () => {
+      return this.openFixErrorDialog();
+    });
+    this.setAction("console-fix-error-button", () => {
+      return this.openFixErrorDialog();
+    });
+    this.setAction("fix-error-analyze", () => {
+      return this.requestFixErrorAnalysis(false);
+    });
+    this.setAction("fix-error-regenerate", () => {
+      return this.requestFixErrorAnalysis(true);
+    });
+    this.setAction("fix-error-apply", () => {
+      return this.applyFixError();
+    });
+    this.setAction("fix-error-copy", () => {
+      return this.copyFixErrorPatch();
+    });
+    this.setAction("fix-error-close", () => {
+      return this.hideFixErrorDialog();
+    });
+    overlay = this.get("fix-error-overlay");
+    if (overlay != null) {
+      overlay.addEventListener("mousedown", (event) => {
+        if (event.target === overlay) {
+          return this.hideFixErrorDialog();
+        }
+      });
+    }
+    if (this.get("fix-error-intent") != null) {
+      this.get("fix-error-intent").addEventListener("input", () => {
+        return this.updateFixErrorButtons();
+      });
+    }
+    if (this.get("fix-error-include-nearby") != null) {
+      this.get("fix-error-include-nearby").addEventListener("change", () => {
+        return this.updateFixErrorButtons();
+      });
+    }
+    if (this.get("fix-error-prefer-minimal") != null) {
+      this.get("fix-error-prefer-minimal").addEventListener("change", () => {
+        return this.updateFixErrorButtons();
+      });
+    }
+    this.updateFixErrorButtons();
+    return this.setFixErrorState("idle", "");
+  }
+
+  clearFixError() {
+    this.fixErrorState = "idle";
+    this.fixErrorProposal = null;
+    this.fixErrorContext = null;
+    this.fixErrorLatestError = null;
+    this.fixErrorConsoleVisible = false;
+    this.fixErrorRequestToken += 1;
+    this.hide("fix-error-overlay");
+    this.renderFixErrorContext(null);
+    this.renderFixErrorProposal(null);
+    this.setFixErrorState("idle", "");
+    this.setFixErrorConsoleVisible(false);
+    return this.updateFixErrorButtons();
+  }
+
+  setFixErrorConsoleVisible(visible) {
+    var button;
+    this.fixErrorConsoleVisible = !!visible;
+    button = this.get("console-fix-error-button");
+    if (button != null) {
+      button.style.display = visible ? "inline-block" : "none";
+    }
+    return this.fixErrorConsoleVisible;
+  }
+
+  setFixErrorLatestError(error) {
+    if (error == null) {
+      this.fixErrorLatestError = null;
+      this.setFixErrorConsoleVisible(false);
+      return this.updateFixErrorButtons();
+    }
+    this.fixErrorLatestError = JSON.parse(JSON.stringify(error));
+    this.setFixErrorConsoleVisible(true);
+    return this.updateFixErrorButtons();
+  }
+
+  getFixErrorContext() {
+    var afterCursor, beforeCursor, column, contextRadius, currentFileContent, editor, enabledLibraries, filePath, lines, project, row, selectedCode, selectedSource, uniqueLibraries;
+    project = this.app.project;
+    editor = this.app.editor != null ? this.app.editor.editor : null;
+    selectedSource = this.app.editor != null ? this.app.editor.selected_source : null;
+    filePath = selectedSource != null ? `ms/${selectedSource}.ms` : null;
+    currentFileContent = editor != null ? editor.getValue() : "";
+    selectedCode = editor != null ? editor.getSelectedText() : "";
+    row = 0;
+    column = 0;
+    if (editor != null && typeof editor.getCursorPosition === "function") {
+      row = editor.getCursorPosition().row || 0;
+      column = editor.getCursorPosition().column || 0;
+    }
+    lines = String(currentFileContent || "").split(/\r?\n/);
+    contextRadius = 18;
+    beforeCursor = lines.slice(Math.max(0, row - contextRadius), row + 1).join("\n");
+    afterCursor = lines.slice(row, Math.min(lines.length, row + contextRadius + 1)).join("\n");
+    enabledLibraries = [];
+    if (Array.isArray(project != null ? project.libs : void 0)) {
+      enabledLibraries.push.apply(enabledLibraries, project.libs);
+    }
+    if (Array.isArray(project != null ? project.libraries : void 0)) {
+      enabledLibraries.push.apply(enabledLibraries, project.libraries);
+    }
+    uniqueLibraries = [];
+    for (var i = 0, len = enabledLibraries.length; i < len; i++) {
+      var lib = enabledLibraries[i];
+      if (typeof lib === "string" && lib.length > 0 && uniqueLibraries.indexOf(lib) < 0) {
+        uniqueLibraries.push(lib);
+      }
+    }
+    return {
+      projectId: project != null ? project.id : null,
+      filePath: filePath,
+      language: project != null && project.language != null ? project.language : "microscript_v2",
+      enabledLibraries: uniqueLibraries,
+      currentFileContent: currentFileContent,
+      selectedCode: selectedCode,
+      beforeCursor: beforeCursor,
+      afterCursor: afterCursor,
+      cursor: {
+        row: row,
+        column: column
+      },
+      error: this.fixErrorLatestError != null ? JSON.parse(JSON.stringify(this.fixErrorLatestError)) : null
+    };
+  }
+
+  openFixErrorDialog() {
+    var context;
+    if (this.app.project == null) {
+      return;
+    }
+    if (this.current_section !== "code") {
+      this.setSection("code", false);
+    }
+    context = this.getFixErrorContext();
+    this.fixErrorContext = context;
+    this.show("fix-error-overlay");
+    this.renderFixErrorContext(context);
+    this.renderFixErrorProposal(null);
+    this.setFixErrorState("collecting", "Collecting code and error context...");
+    this.updateFixErrorButtons();
+    return setTimeout((() => {
+      return this.requestFixErrorAnalysis(false);
+    }), 0);
+  }
+
+  hideFixErrorDialog() {
+    this.fixErrorRequestToken += 1;
+    this.hide("fix-error-overlay");
+    return this.updateFixErrorButtons();
+  }
+
+  renderFixErrorContext(context) {
+    var currentFile, element, errorText, path, selectedCode;
+    path = this.get("fix-error-file-path");
+    currentFile = this.get("fix-error-current-file");
+    selectedCode = this.get("fix-error-selected-code");
+    errorText = this.get("fix-error-error");
+    if (path != null) {
+      path.value = context != null && context.filePath != null ? context.filePath : "";
+    }
+    if (currentFile != null) {
+      currentFile.value = context != null && context.currentFileContent != null ? context.currentFileContent : "";
+    }
+    if (selectedCode != null) {
+      selectedCode.value = context != null && context.selectedCode != null && context.selectedCode.length > 0 ? context.selectedCode : "";
+    }
+    if (errorText != null) {
+      errorText.value = context != null && context.error != null ? this.formatFixErrorMessage(context.error) : "";
+    }
+    element = this.get("fix-error-state-description");
+    if (element != null) {
+      if (context != null && context.error != null && context.error.message != null && context.error.message.length > 0) {
+        element.textContent = context.error.message;
+      } else {
+        element.textContent = "No structured runtime error was captured yet.";
+      }
+    }
+    element = this.get("fix-error-language");
+    if (element != null) {
+      element.textContent = context != null && context.language != null ? context.language : "";
+    }
+    element = this.get("fix-error-libraries");
+    if (element != null) {
+      element.textContent = context != null && Array.isArray(context.enabledLibraries) && context.enabledLibraries.length > 0 ? context.enabledLibraries.join(", ") : "None";
+    }
+    return this.updateFixErrorButtons();
+  }
+
+  formatFixErrorMessage(error) {
+    var lines;
+    if (error == null) {
+      return "";
+    }
+    lines = [];
+    if (error.message != null && error.message.length > 0) {
+      lines.push(String(error.message));
+    }
+    if (error.file != null && error.file.length > 0) {
+      lines.push(`File: ${error.file}`);
+    }
+    if (error.line != null) {
+      lines.push(`Line: ${error.line}${error.column != null ? `, column ${error.column}` : ""}`);
+    }
+    if (error.type != null && error.type.length > 0) {
+      lines.push(`Type: ${error.type}`);
+    }
+    if (error.stack != null && error.stack.length > 0) {
+      lines.push("");
+      lines.push(error.stack);
+    }
+    return lines.join("\n");
+  }
+
+  buildFixErrorRequest(regenerate = false) {
+    var context, intent, options, proposalId;
+    context = this.fixErrorContext || this.getFixErrorContext();
+    intent = this.get("fix-error-intent") != null ? this.get("fix-error-intent").value.trim() : "";
+    options = {
+      includeNearbyFiles: this.get("fix-error-include-nearby") != null ? this.get("fix-error-include-nearby").checked : false,
+      preferMinimalPatch: this.get("fix-error-prefer-minimal") != null ? this.get("fix-error-prefer-minimal").checked : true,
+      allowMultiFileFix: false
+    };
+    proposalId = regenerate && this.fixErrorProposal != null ? this.fixErrorProposal.proposalId : null;
+    return {
+      projectId: context.projectId,
+      filePath: context.filePath,
+      language: context.language,
+      enabledLibraries: context.enabledLibraries,
+      currentFileContent: context.currentFileContent,
+      selectedCode: context.selectedCode,
+      beforeCursor: context.beforeCursor,
+      afterCursor: context.afterCursor,
+      error: context.error,
+      userIntent: intent,
+      options: options,
+      proposalId: proposalId
+    };
+  }
+
+  requestFixErrorAnalysis(regenerate = false) {
+    var body, requestToken;
+    if (this.fixErrorState === "requesting" || this.fixErrorState === "applying") {
+      return Promise.resolve(null);
+    }
+    body = this.buildFixErrorRequest(regenerate);
+    this.fixErrorContext = body;
+    requestToken = ++this.fixErrorRequestToken;
+    this.setFixErrorState("requesting", regenerate ? "Regenerating fix proposal..." : "Requesting AI fix proposal...");
+    this.updateFixErrorButtons();
+    return this.requestJson("POST", "/api/ai/fix-error", body).then((data) => {
+      if (requestToken !== this.fixErrorRequestToken) {
+        return null;
+      }
+      return this.applyFixErrorProposal(data);
+    }, (err) => {
+      if (requestToken !== this.fixErrorRequestToken) {
+        return null;
+      }
+      if ((err != null ? err.status : void 0) === 409) {
+        this.renderFixErrorProposal(null);
+        this.setFixErrorState("conflict", (err != null ? err.message : void 0) || "This file changed after the proposal was generated.");
+      } else if ((err != null ? err.status : void 0) === 422) {
+        this.setFixErrorState("validation_rejected", (err != null ? err.message : void 0) || "The AI proposal was rejected by validation.");
+      } else if ((err != null ? err.status : void 0) === 429) {
+        this.setFixErrorState("validation_rejected", (err != null ? err.message : void 0) || "Rate limited");
+      } else {
+        this.setFixErrorState("validation_rejected", (err != null ? err.message : void 0) || "Failed to generate a fix proposal.");
+      }
+      this.updateFixErrorButtons();
+      return null;
+    });
+  }
+
+  applyFixErrorProposal(data) {
+    var change, diffText, element, firstChange, proposal, statusMessage, summary;
+    proposal = data != null ? data.fix : null;
+    if (proposal == null) {
+      this.setFixErrorState("validation_rejected", "The AI response did not include a proposal.");
+      this.renderFixErrorProposal(null);
+      return null;
+    }
+    this.fixErrorProposal = {
+      proposalId: data.proposalId != null ? data.proposalId : null,
+      provider: data.provider != null ? data.provider : null,
+      fix: proposal
+    };
+    this.renderFixErrorProposal(this.fixErrorProposal);
+    if (proposal.needsMoreContext) {
+      summary = Array.isArray(proposal.questions) && proposal.questions.length > 0 ? proposal.questions.join(" ") : "The AI needs more context before it can propose a safe fix.";
+      this.setFixErrorState("needs_more_context", summary);
+    } else {
+      firstChange = Array.isArray(proposal.changes) && proposal.changes.length > 0 ? proposal.changes[0] : null;
+      if (firstChange != null) {
+        change = firstChange;
+        diffText = this.buildFixErrorPatchText(change.path, this.fixErrorContext != null ? this.fixErrorContext.currentFileContent : "", change.newContent, proposal);
+        this.renderFixErrorDiff(change.path, this.fixErrorContext != null ? this.fixErrorContext.currentFileContent : "", change.newContent, proposal);
+        element = this.get("fix-error-patch-text");
+        if (element != null) {
+          element.value = diffText;
+        }
+      }
+      this.setFixErrorState("showing_proposal", proposal.summary || "AI proposal ready");
+    }
+    statusMessage = this.get("fix-error-status-message");
+    if (statusMessage != null) {
+      statusMessage.textContent = data != null && data.provider != null ? `${data.provider.name || "AI"} / ${data.provider.modelId || ""}` : "";
+    }
+    this.updateFixErrorButtons();
+    return data;
+  }
+
+  renderFixErrorProposal(record) {
+    var change, container, diffContainer, explanation, fix, i, item, len, list, note, proposal, questions, summary, warnings;
+    container = this.get("fix-error-proposal-summary");
+    diffContainer = this.get("fix-error-diff");
+    explanation = this.get("fix-error-diagnosis");
+    note = this.get("fix-error-followup");
+    questions = this.get("fix-error-questions");
+    warnings = this.get("fix-error-warnings");
+    if (container != null) {
+      container.textContent = "";
+    }
+    if (diffContainer != null) {
+      diffContainer.innerHTML = "";
+    }
+    if (explanation != null) {
+      explanation.textContent = "";
+    }
+    if (note != null) {
+      note.textContent = "";
+    }
+    if (questions != null) {
+      questions.innerHTML = "";
+    }
+    if (warnings != null) {
+      warnings.innerHTML = "";
+    }
+    if (record == null) {
+      return;
+    }
+    proposal = record.fix || {};
+    summary = this.get("fix-error-summary");
+    if (summary != null) {
+      summary.textContent = proposal.summary || "";
+    }
+    if (explanation != null) {
+      explanation.textContent = proposal.diagnosis != null ? proposal.diagnosis.rootCause || "" : "";
+    }
+    if (container != null) {
+      list = [];
+      list.push(`Proposal: ${record.proposalId != null ? record.proposalId : ""}`);
+      if (record.provider != null) {
+        list.push(`Provider: ${record.provider.name || ""}${record.provider.modelId != null ? ` / ${record.provider.modelId}` : ""}`);
+      }
+      if (proposal.diagnosis != null && proposal.diagnosis.errorType != null) {
+        list.push(`Type: ${proposal.diagnosis.errorType}`);
+      }
+      container.textContent = list.filter((entry) => entry != null && entry.length > 0).join("  ");
+    }
+    if (Array.isArray(proposal.warnings) && proposal.warnings.length > 0 && warnings != null) {
+      for (i = 0, len = proposal.warnings.length; i < len; i++) {
+        item = document.createElement("div");
+        item.classList.add("fix-error-warning");
+        item.textContent = proposal.warnings[i];
+        warnings.appendChild(item);
+      }
+    }
+    if (proposal.needsMoreContext) {
+      if (note != null) {
+        note.textContent = Array.isArray(proposal.questions) && proposal.questions.length > 0 ? proposal.questions.join(" ") : "The AI needs more context.";
+      }
+      if (questions != null && Array.isArray(proposal.questions)) {
+        for (i = 0, len = proposal.questions.length; i < len; i++) {
+          item = document.createElement("div");
+          item.classList.add("fix-error-question");
+          item.textContent = proposal.questions[i];
+          questions.appendChild(item);
+        }
+      }
+      return;
+    }
+    if (Array.isArray(proposal.changes) && proposal.changes.length > 0) {
+      change = proposal.changes[0];
+      if (diffContainer != null) {
+        this.renderFixErrorDiff(change.path, this.fixErrorContext != null ? this.fixErrorContext.currentFileContent : "", change.newContent, proposal);
+      }
+      if (note != null) {
+        note.textContent = proposal.userExplanation || "";
+      }
+    } else if (note != null) {
+      note.textContent = "No file change was returned.";
+    }
+  }
+
+  renderFixErrorDiff(path, before, after, proposal) {
+    var afterLine, beforeLine, container, diffLines, entry, i, index, line, lines, row, segment, text;
+    container = this.get("fix-error-diff");
+    if (container == null) {
+      return;
+    }
+    container.innerHTML = "";
+    lines = typeof diff === "function" ? diff(before || "", after || "") : [];
+    if (!Array.isArray(lines) || lines.length === 0) {
+      text = document.createElement("div");
+      text.classList.add("fix-error-diff-empty");
+      text.textContent = "No diff available.";
+      container.appendChild(text);
+      return;
+    }
+    beforeLine = 1;
+    afterLine = 1;
+    diffLines = document.createElement("div");
+    diffLines.classList.add("fix-error-diff-lines");
+    container.appendChild(diffLines);
+    for (i = 0; i < lines.length; i++) {
+      segment = lines[i];
+      if (!segment || !Array.isArray(segment.data)) {
+        continue;
+      }
+      for (index = 0; index < segment.data.length; index++) {
+        line = segment.data[index];
+        row = document.createElement("div");
+        row.classList.add("fix-error-diff-row");
+        if (segment.type === "=") {
+          row.classList.add("context");
+        } else if (segment.type === "-") {
+          row.classList.add("removed");
+        } else if (segment.type === "+") {
+          row.classList.add("added");
+        }
+        row.innerHTML = "<span class='before'></span><span class='after'></span><span class='text'></span>";
+        if (segment.type === "=") {
+          row.childNodes[0].textContent = String(beforeLine++);
+          row.childNodes[1].textContent = String(afterLine++);
+        } else if (segment.type === "-") {
+          row.childNodes[0].textContent = String(beforeLine++);
+        } else if (segment.type === "+") {
+          row.childNodes[1].textContent = String(afterLine++);
+        }
+        row.childNodes[2].textContent = line;
+        diffLines.appendChild(row);
+      }
+    }
+    return container;
+  }
+
+  buildFixErrorPatchText(path, before, after, proposal) {
+    var diffLines, i, line, out, segment;
+    out = [];
+    if (proposal != null && proposal.summary != null && proposal.summary.length > 0) {
+      out.push(`# ${proposal.summary}`);
+    }
+    out.push(`--- ${path}`);
+    out.push(`+++ ${path}`);
+    diffLines = typeof diff === "function" ? diff(before || "", after || "") : [];
+    for (i = 0; i < diffLines.length; i++) {
+      segment = diffLines[i];
+      if (!segment || !Array.isArray(segment.data)) {
+        continue;
+      }
+      for (var j = 0; j < segment.data.length; j++) {
+        line = segment.data[j];
+        if (segment.type === "=") {
+          out.push(` ${line}`);
+        } else if (segment.type === "-") {
+          out.push(`-${line}`);
+        } else if (segment.type === "+") {
+          out.push(`+${line}`);
+        }
+      }
+    }
+    return out.join("\n");
+  }
+
+  copyFixErrorPatch() {
+    var element, proposal, text;
+    proposal = this.fixErrorProposal;
+    if (proposal == null || (proposal.fix == null) || !Array.isArray(proposal.fix.changes) || proposal.fix.changes.length === 0) {
+      return;
+    }
+    text = this.buildFixErrorPatchText(proposal.fix.changes[0].path, this.fixErrorContext != null ? this.fixErrorContext.currentFileContent : "", proposal.fix.changes[0].newContent, proposal.fix);
+    if (navigator.clipboard != null && typeof navigator.clipboard.writeText === "function") {
+      navigator.clipboard.writeText(text).then(() => {
+        return this.showNotification("Patch copied to clipboard");
+      });
+    } else {
+      element = document.createElement("textarea");
+      element.value = text;
+      element.style.position = "fixed";
+      element.style.left = "-1000px";
+      element.style.top = "-1000px";
+      document.body.appendChild(element);
+      element.select();
+      document.execCommand("copy");
+      document.body.removeChild(element);
+      this.showNotification("Patch copied to clipboard");
+    }
+  }
+
+  applyFixError() {
+    var body, proposal, requestToken;
+    proposal = this.fixErrorProposal;
+    if (proposal == null || proposal.fix == null || proposal.proposalId == null) {
+      return Promise.resolve(null);
+    }
+    if (proposal.fix.needsMoreContext) {
+      this.setFixErrorState("needs_more_context", "More context is required before applying this fix.");
+      return Promise.resolve(null);
+    }
+    if (!Array.isArray(proposal.fix.changes) || proposal.fix.changes.length === 0) {
+      this.setFixErrorState("validation_rejected", "The proposal has no changes to apply.");
+      return Promise.resolve(null);
+    }
+    body = {
+      fixProposalId: proposal.proposalId,
+      acceptedChanges: proposal.fix.changes
+    };
+    requestToken = ++this.fixErrorRequestToken;
+    this.setFixErrorState("applying", "Applying approved change...");
+    this.updateFixErrorButtons();
+    return this.requestJson("POST", "/api/ai/fix-error/apply", body).then((data) => {
+      if (requestToken !== this.fixErrorRequestToken) {
+        return null;
+      }
+      this.setFixErrorState("success", "Fix applied successfully.");
+      this.updateFixErrorButtons();
+      this.showNotification("AI fix applied");
+      return setTimeout((() => {
+        if (this.fixErrorState === "success") {
+          return this.hideFixErrorDialog();
+        }
+      }), 1200);
+    }, (err) => {
+      if (requestToken !== this.fixErrorRequestToken) {
+        return null;
+      }
+      if ((err != null ? err.status : void 0) === 409) {
+        this.setFixErrorState("conflict", (err != null ? err.message : void 0) || "The file changed before the proposal could be applied.");
+      } else if ((err != null ? err.status : void 0) === 422) {
+        this.setFixErrorState("validation_rejected", (err != null ? err.message : void 0) || "The proposal was rejected by validation.");
+      } else {
+        this.setFixErrorState("validation_rejected", (err != null ? err.message : void 0) || "Failed to apply the fix.");
+      }
+      this.updateFixErrorButtons();
+      return null;
+    });
+  }
+
+  setFixErrorState(state, message = "") {
+    var element, statusText;
+    this.fixErrorState = state;
+    this.fixErrorStateMessage = message || "";
+    element = this.get("fix-error-state");
+    if (element != null) {
+      element.textContent = state.replace(/_/g, " ");
+    }
+    statusText = this.get("fix-error-status");
+    if (statusText != null) {
+      statusText.textContent = message || "";
+    }
+    return this.updateFixErrorButtons();
+  }
+
+  updateFixErrorButtons() {
+    var applyButton, analyzeButton, canApply, canCopy, canRegenerate, element, hasProposal, isBusy, regenerateButton;
+    hasProposal = this.fixErrorProposal != null && this.fixErrorProposal.fix != null;
+    isBusy = this.fixErrorState === "collecting" || this.fixErrorState === "requesting" || this.fixErrorState === "applying";
+    canRegenerate = hasProposal && !isBusy;
+    canCopy = hasProposal && !isBusy;
+    canApply = hasProposal && !isBusy && !(this.fixErrorProposal.fix != null && this.fixErrorProposal.fix.needsMoreContext === true) && Array.isArray(this.fixErrorProposal.fix.changes) && this.fixErrorProposal.fix.changes.length > 0 && this.fixErrorState !== "validation_rejected" && this.fixErrorState !== "conflict";
+    analyzeButton = this.get("fix-error-analyze");
+    regenerateButton = this.get("fix-error-regenerate");
+    applyButton = this.get("fix-error-apply");
+    element = this.get("fix-error-copy");
+    if (analyzeButton != null) {
+      analyzeButton.disabled = isBusy;
+    }
+    if (regenerateButton != null) {
+      regenerateButton.disabled = !canRegenerate;
+    }
+    if (applyButton != null) {
+      applyButton.disabled = !canApply;
+    }
+    if (element != null) {
+      element.disabled = !canCopy;
+    }
+    element = this.get("fix-error-intent");
+    if (element != null) {
+      element.disabled = isBusy;
+    }
+    element = this.get("fix-error-include-nearby");
+    if (element != null) {
+      element.disabled = isBusy;
+    }
+    element = this.get("fix-error-prefer-minimal");
+    if (element != null) {
+      element.disabled = isBusy;
+    }
+    return this.fixErrorState;
+  }
+
   checkRebootMessage() {
     var div, funk;
     if (this.reboot_date && Date.now() < this.reboot_date + 1000 * 60 * 2) {
@@ -347,6 +965,7 @@ AppUI = class AppUI {
     this.hide("projectview");
     this.show("myprojects");
     this.clearAiDraft();
+    this.clearFixError();
     this.app.runwindow.projectClosed();
     this.app.debug.projectClosed();
     this.app.tab_manager.projectClosed();
@@ -753,6 +1372,7 @@ AppUI = class AppUI {
         if (!response.ok) {
           err = new Error((data != null ? data.error : void 0) || response.statusText || "Request failed");
           err.response = data;
+          err.status = response.status;
           throw err;
         }
         providers = Array.isArray(data != null ? data.providers : void 0) ? data.providers : [];
@@ -1664,6 +2284,7 @@ AppUI = class AppUI {
     this.hide("login-info");
     this.nick = null;
     this.clearAiDraft();
+    this.clearFixError();
     this.updateAiProviderVisibility();
     return this.project = null;
   }
@@ -1858,6 +2479,7 @@ AppUI = class AppUI {
     var j, len, ref, t, tab;
     this.project = project1;
     this.clearAiDraft();
+    this.clearFixError();
     this.updateProjectTitle();
     this.get("project-icon").src = location.origin + `/${this.project.owner.nick}/${this.project.slug}/${this.project.code}/icon.png`;
     tab = "code";

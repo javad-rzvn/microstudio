@@ -27,6 +27,9 @@ class @RateLimiter
     @map.ai_explain_user = new RateLimiterClass(@,10,20)
     @map.ai_apply_ip = new RateLimiterClass(@,10,10)
     @map.ai_apply_user = new RateLimiterClass(@,10,10)
+    @map.ai_fix_error_ip = new RateLimiterClass(@,60,20)
+    @map.ai_fix_error_user = new RateLimiterClass(@,60,20)
+    @map.ai_fix_error_project = new RateLimiterClass(@,24*60,60)
 
     @map.create_file_user = new RateLimiterClass(@,5,40) # max 40 new files per 5 minutes
     #@map.change_file_user = new RateLimiterClass(@,10,200)

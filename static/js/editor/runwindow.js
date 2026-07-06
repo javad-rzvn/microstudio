@@ -64,6 +64,7 @@ this.RunWindow = class RunWindow {
     this.listeners = [];
     this.project_access = new ProjectAccess(this.app, null, this);
     this.server_bar = new ServerBar(this.app);
+    this.latestError = null;
   }
 
   initWarnings() {
@@ -91,6 +92,42 @@ this.RunWindow = class RunWindow {
     document.getElementById("console-options-warning-nonfunction").checked = this.warning_nonfunction;
     document.getElementById("console-options-warning-assign").checked = this.warning_assign;
     return document.getElementById("console-options-warning-condition").checked = this.warning_condition;
+  }
+
+  rememberLatestError(err) {
+    var blockedTypes, data, errorText;
+    if (err == null) {
+      return this.clearLatestError();
+    }
+    blockedTypes = new Set(["non_function", "undefined_variable", "assigning_undefined", "assigning_api_variable", "assignment_as_condition"]);
+    if (err.type != null && blockedTypes.has(err.type)) {
+      return;
+    }
+    errorText = err.error != null ? err.error : err.message != null ? err.message : "";
+    if (!errorText) {
+      return;
+    }
+    data = {
+      type: err.type || "runtime",
+      error: errorText,
+      message: errorText,
+      file: err.file != null ? err.file : null,
+      line: err.line != null ? err.line : null,
+      column: err.column != null ? err.column : null,
+      stack: err.stack != null ? err.stack : "",
+      expression: err.expression != null ? err.expression : ""
+    };
+    this.latestError = data;
+    if (this.app.appui != null && typeof this.app.appui.setFixErrorLatestError === "function") {
+      this.app.appui.setFixErrorLatestError(data);
+    }
+  }
+
+  clearLatestError() {
+    this.latestError = null;
+    if (this.app.appui != null && typeof this.app.appui.setFixErrorLatestError === "function") {
+      return this.app.appui.setFixErrorLatestError(null);
+    }
   }
 
   detach() {
@@ -397,6 +434,7 @@ this.RunWindow = class RunWindow {
       this.error_buffer.push(err);
       return;
     }
+    this.rememberLatestError(err);
     error = err.error;
     switch (err.type) {
       case "non_function":
@@ -470,10 +508,11 @@ this.RunWindow = class RunWindow {
     try {
       msg = JSON.parse(msg);
       switch (msg.name) {
-        case "error":
-          if (msg.data) {
-            this.logError(msg.data);
-            if (this.app.editor.selected_source === msg.data.file) {
+      case "error":
+        if (msg.data) {
+          this.rememberLatestError(msg.data);
+          this.logError(msg.data);
+          if (this.app.editor.selected_source === msg.data.file) {
               source = this.app.project.getSource(msg.data.file);
               if ((source != null) && msg.data.error) {
                 source.annotations = [
@@ -498,6 +537,9 @@ this.RunWindow = class RunWindow {
               source.annotations = [];
               return this.app.project.notifyListeners("annotations");
             }
+          }
+          if ((this.latestError != null) && this.latestError.file === msg.file) {
+            this.clearLatestError();
           }
           break;
         case "log":
@@ -646,6 +688,7 @@ this.RunWindow = class RunWindow {
     }
     document.querySelector("#runtime-server-view").innerHTML = "";
     this.app.appui.server_splitbar.closed1 = true;
+    this.clearLatestError();
   }
 
   hideQRCode() {

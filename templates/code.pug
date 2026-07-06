@@ -31,6 +31,9 @@ div.code-editor#code-editor
           div#code-font-plus(title="Increase font size") <i class="fas fa-long-arrow-alt-up"></i> A
           div#code-search.selected(title="Search in code")
             i.fas.fa-search
+          div#fix-error-button(title=translator.get("Fix My Error"))
+            i.fa.fa-magic
+            span #{translator.get("Fix My Error")}
 
         div.value-tool-button#color-value-tool-button
           span CTRL
@@ -130,6 +133,9 @@ div.runtime-container#runtime-container
                 i.fa.fa-trash-alt
               div#console-options-button(title="Console options")
                 i.fa.fa-cogs
+              div#console-fix-error-button.hidden(title=translator.get("Fix this error with AI"))
+                i.fa.fa-magic
+                span #{translator.get("Fix")}
 
             i#open-timemachine-button.fa.fa-history(title=translator.get("Time Machine"))
             i#open-debugger-button.fa.fa-bug(title=translator.get("Debug Tools"))

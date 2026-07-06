@@ -76,6 +76,7 @@ class AppUI
     #@setSection("options")
     @createLoginFunctions()
     @createAiGeneratorFunctions()
+    @createAiFixErrorFunctions()
 
 
 
@@ -643,6 +644,7 @@ class AppUI
         if not response.ok
           err = new Error((if data? then data.error else null) or response.statusText or "Request failed")
           err.response = data
+          err.status = response.status
           throw err
         providers = if Array.isArray(data?.providers) then data.providers else []
         @aiProviderProfiles = providers

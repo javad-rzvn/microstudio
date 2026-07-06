@@ -561,10 +561,10 @@ html(lang=language, dir=language == "fa" ? "rtl" : "ltr")
                       h3 #{translator.get("Explanation")}
                       div#ai-generator-explanation-text
 
-                  div#ai-provider-admin-panel.hidden
-                    div.ai-provider-admin-header
-                      h3 #{translator.get("Provider profiles")}
-                      button#ai-provider-admin-refresh(type="button") #{translator.get("Refresh")}
+                    div#ai-provider-admin-panel.hidden
+                      div.ai-provider-admin-header
+                        h3 #{translator.get("Provider profiles")}
+                        button#ai-provider-admin-refresh(type="button") #{translator.get("Refresh")}
                     div#ai-provider-admin-note.ai-provider-admin-note.hidden Keys are stored in plaintext in local mode.
                     div.ai-provider-admin-body
                       div.ai-provider-admin-list
@@ -625,6 +625,69 @@ html(lang=language, dir=language == "fa" ? "rtl" : "ltr")
                           button#ai-provider-new(type="button") #{translator.get("New provider")}
                           button#ai-provider-cancel(type="button") #{translator.get("Cancel edit")}
 
+
+    div.overlay#fix-error-overlay
+      div#fix-error-window
+        div.fix-error-header
+          div.fix-error-title-block
+            h2 #{translator.get("Fix My Error")}
+            p#fix-error-state-description #{translator.get("Collect an error, review the code context, and approve a patch before it is written.")}
+          div.fix-error-header-actions
+            span#fix-error-state.fix-error-state-pill idle
+            button#fix-error-close(type="button")
+              i.fa.fa-times
+        div.fix-error-meta-row
+          div
+            label(for="fix-error-file-path") #{translator.get("Current file")}
+            input#fix-error-file-path(type="text" readonly)
+          div
+            label(for="fix-error-language") #{translator.get("Language")}
+            div#fix-error-language.fix-error-meta-value
+          div
+            label(for="fix-error-libraries") #{translator.get("Libraries")}
+            div#fix-error-libraries.fix-error-meta-value
+          div
+            label(for="fix-error-status-message") #{translator.get("Provider")}
+            div#fix-error-status-message.fix-error-meta-value
+        div.fix-error-body
+          div.fix-error-column
+            div.fix-error-card
+              h3 #{translator.get("Error")}
+              textarea#fix-error-error(readonly rows="8" spellcheck="false")
+            div.fix-error-card
+              h3 #{translator.get("Current file")}
+              textarea#fix-error-current-file(readonly rows="14" spellcheck="false")
+            div.fix-error-card
+              h3 #{translator.get("Selection")}
+              textarea#fix-error-selected-code(readonly rows="8" spellcheck="false")
+            div.fix-error-card
+              h3 #{translator.get("Intent")}
+              textarea#fix-error-intent(rows="4" placeholder="Tell AI what you were trying to do before the error appeared.")
+              div.fix-error-options
+                label
+                  input#fix-error-include-nearby(type="checkbox" checked)
+                  |  #{translator.get("Include nearby code")}
+                label
+                  input#fix-error-prefer-minimal(type="checkbox" checked)
+                  |  #{translator.get("Prefer the smallest patch")}
+          div.fix-error-column
+            div.fix-error-card
+              h3 #{translator.get("Proposal")}
+              div#fix-error-proposal-summary.fix-error-proposal-summary
+              div#fix-error-summary.fix-error-summary
+              div#fix-error-diagnosis.fix-error-diagnosis
+              div#fix-error-followup.fix-error-followup
+              div#fix-error-questions.fix-error-questions
+              div#fix-error-warnings.fix-error-warnings
+            div.fix-error-card.fix-error-diff-card
+              h3 #{translator.get("Diff preview")}
+              div#fix-error-diff.fix-error-diff
+        div.fix-error-footer
+          button#fix-error-analyze(type="button") #{translator.get("Analyze & Fix")}
+          button#fix-error-regenerate(type="button") #{translator.get("Regenerate")}
+          button#fix-error-copy(type="button") #{translator.get("Copy Patch")}
+          button#fix-error-apply(type="button") #{translator.get("Apply Fix")}
+          button#fix-error-close(type="button") #{translator.get("Cancel")}
 
     div.overlay#login-overlay
       div#login-window
