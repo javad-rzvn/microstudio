@@ -52,7 +52,7 @@ this.Processor = class Processor {
       }
       proc.stack[++proc.stack_index] = arguments.length;
       if (routine.uses_arguments) {
-        a = [...arguments];
+        a = Array.prototype.slice.call(arguments);
         for (i = k = 0, ref1 = a.length - 1; k <= ref1; i = k += 1) {
           if (a[i] == null) {
             a[i] = 0;
@@ -79,7 +79,7 @@ this.Processor = class Processor {
       }
       proc.stack[++proc.stack_index] = arguments.length;
       if (routine.uses_arguments) {
-        a = [...arguments];
+        a = Array.prototype.slice.call(arguments);
         for (i = k = 0, ref1 = a.length - 1; k <= ref1; i = k += 1) {
           if (a[i] == null) {
             a[i] = 0;
