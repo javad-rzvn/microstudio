@@ -1,7 +1,13 @@
 const crypto = require("crypto");
 
-function hasPlaintextFallbackEnabled() {
-  return process.env.NODE_ENV === "development" && String(process.env.AI_GATEWAY_ALLOW_PLAINTEXT_KEYS || "").toLowerCase() === "true";
+function hasPlaintextFallbackEnabled(options = {}) {
+  if (options.allowPlaintextFallback != null) {
+    return options.allowPlaintextFallback === true;
+  }
+  if (process.env.NODE_ENV === "production") {
+    return false;
+  }
+  return String(process.env.AI_GATEWAY_ALLOW_PLAINTEXT_KEYS || "").toLowerCase() === "true" || process.env.NODE_ENV !== "production";
 }
 
 function normalizeSecret(secret) {
@@ -70,8 +76,9 @@ class AesGcmAiProviderCrypto {
   }
 }
 
-function createAiProviderCrypto() {
-  if (hasPlaintextFallbackEnabled()) {
+function createAiProviderCrypto(options = {}) {
+  if (!String(process.env.AI_GATEWAY_ENCRYPTION_SECRET || "").trim() && hasPlaintextFallbackEnabled(options)) {
+    console.warn("AI_GATEWAY_ENCRYPTION_SECRET is not set; using plaintext storage for AI provider keys in this non-production environment.");
     return new PlaintextAiProviderCrypto();
   }
   return new AesGcmAiProviderCrypto(process.env.AI_GATEWAY_ENCRYPTION_SECRET || "");

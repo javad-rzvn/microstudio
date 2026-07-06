@@ -906,6 +906,16 @@ padding-left: 2px ;
   grid-column: 1 / -1;
 }
 
+.ai-provider-admin-note {
+  margin: 10px 0 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(250, 204, 21, .12);
+  border: solid 1px rgba(250, 204, 21, .22);
+  color: rgba(254, 240, 138, .96);
+  font-size: 13px;
+}
+
 .ai-provider-admin-header {
   display: flex;
   gap: 12px;

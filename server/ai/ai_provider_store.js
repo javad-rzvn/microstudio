@@ -51,11 +51,14 @@ class AiProviderStore {
     this.table = options.table || "ai_provider_profiles";
     this.usageTable = options.usageTable || "ai_usage_logs";
     this.crypto = options.crypto || null;
+    this.allowPlaintextFallback = options.allowPlaintextFallback !== false;
   }
 
   getCrypto() {
     if (this.crypto == null) {
-      this.crypto = createAiProviderCrypto();
+      this.crypto = createAiProviderCrypto({
+        allowPlaintextFallback: this.allowPlaintextFallback
+      });
     }
     return this.crypto;
   }

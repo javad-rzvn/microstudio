@@ -700,8 +700,10 @@ class AppUI
     if not isAdmin
       @aiProviderAdminOpen = false
       panel.classList.add "hidden"
+      @updateAiProviderAdminNote()
       return
     panel.classList.toggle "hidden", not @aiProviderAdminOpen
+    @updateAiProviderAdminNote()
 
   toggleAiProviderAdminPanel:()->
     return if not (@app.user? and @app.user.flags? and @app.user.flags.admin)
@@ -737,6 +739,14 @@ class AppUI
     @get("ai-provider-default").checked = if provider? then provider.isDefault == true else false
     @setAiProviderAdminStatus if provider? then "Editing provider #{provider.id}" else "Creating new provider"
     @renderAiProviderAdminList @aiAdminProviders or []
+    @updateAiProviderAdminNote()
+
+  updateAiProviderAdminNote:()->
+    note = @get("ai-provider-admin-note")
+    return if not note?
+    isLocalMode = window.ms_realm? and window.ms_realm != "production"
+    note.textContent = "Keys are stored in plaintext in local mode."
+    note.classList.toggle "hidden", not isLocalMode
 
   collectAiProviderPayload:()->
     payload =

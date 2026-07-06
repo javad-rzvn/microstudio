@@ -106,6 +106,7 @@ class @WebApp
           css_files: @concatenator.getHomeCSSFiles()
           translator: translator
           language: lang
+          realm: @server.config.realm or "local"
           standalone: @server.config.standalone == true
           languages: @languages
           graphics_options: @concatenator.alt_players
@@ -132,6 +133,7 @@ class @WebApp
           css_files: @concatenator.getHomeCSSFiles()
           translator: translator
           language: lang
+          realm: @server.config.realm or "local"
           standalone: @server.config.standalone == true
           languages: @languages
           graphics_options: @concatenator.alt_players

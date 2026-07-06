@@ -25,7 +25,8 @@ class AiGatewayManager {
     this.server = server;
     this.crypto = options.crypto || null;
     this.store = options.store || new AiProviderStore(server.db, {
-      crypto: this.crypto
+      crypto: this.crypto,
+      allowPlaintextFallback: !(server && server.config && server.config.realm === "production")
     });
     this.imageProviders = {
       openai: () => new OpenAIImageProvider(this.getConfiguredImageProviderOptions("openai")),

@@ -71,6 +71,7 @@ html(lang=language, dir=language == "fa" ? "rtl" : "ltr")
 
     script.
       window.ms_languages = !{JSON.stringify(languages)};
+      window.ms_realm = !{JSON.stringify(realm)};
       window.ms_standalone = !{standalone} ;
       window.ms_project_moderation = !{project_moderation} ;
       window.translation = !{translation};
@@ -557,6 +558,7 @@ html(lang=language, dir=language == "fa" ? "rtl" : "ltr")
                     div.ai-provider-admin-header
                       h3 #{translator.get("Provider profiles")}
                       button#ai-provider-admin-refresh(type="button") #{translator.get("Refresh")}
+                    div#ai-provider-admin-note.ai-provider-admin-note.hidden Keys are stored in plaintext in local mode.
                     div.ai-provider-admin-body
                       div.ai-provider-admin-list
                         div#ai-provider-admin-list

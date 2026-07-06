@@ -1785,8 +1785,20 @@ AppUI = class AppUI {
     isAdmin = (this.app.user != null) && (this.app.user.flags != null) && this.app.user.flags.admin;
     row.classList.toggle("hidden", !isAdmin);
     if (this.get("ai-generator-image-provider") != null) {
-      return this.get("ai-generator-image-provider").disabled = !isAdmin;
+      this.get("ai-generator-image-provider").disabled = !isAdmin;
     }
+    return this.updateAiProviderAdminNote();
+  }
+
+  updateAiProviderAdminNote() {
+    var isLocalMode, note;
+    note = this.get("ai-provider-admin-note");
+    if (note == null) {
+      return;
+    }
+    isLocalMode = (window.ms_realm != null) && window.ms_realm !== "production";
+    note.textContent = "Keys are stored in plaintext in local mode.";
+    return note.classList.toggle("hidden", !isLocalMode);
   }
 
   updateProjectTitle() {
