@@ -38,6 +38,32 @@ const DANGEROUS_CODE_PATTERNS = [
   /\bimport\s*\(/i
 ];
 
+const MICRO_SCRIPT_RESERVED_WORDS = new Set([
+  "and", "or", "not", "if", "then", "else", "elsif", "end", "for", "to", "by",
+  "while", "break", "continue", "function", "return", "local", "object", "true", "false",
+  "class", "extends", "super", "new", "in", "as", "null", "undefined"
+]);
+
+const MICROSTUDIO_API_GLOBALS = new Set([
+  "screen", "keyboard", "mouse", "touch", "audio", "system", "sprites", "maps", "storage",
+  "asset_manager", "Matter", "init", "update", "draw"
+]);
+
+const MICRO_SCRIPT_FORBIDDEN_SYNTAX_PATTERNS = [
+  { pattern: /\bfunction\s+[a-zA-Z_$][\w$]*\s*\(/, reason: "JavaScript function declaration" },
+  { pattern: /(^|[^\w])(?:let|const|var)\s+[a-zA-Z_$]/, reason: "JavaScript variable declaration" },
+  { pattern: /;\s*(?:(?:\r?\n)|$)/, reason: "JavaScript semicolon" },
+  { pattern: /(^|[^=!])={3}([^=]|$)/, reason: "JavaScript strict equality" },
+  { pattern: /!==/, reason: "JavaScript strict inequality" },
+  { pattern: /\bnull\b/, reason: "JavaScript null" },
+  { pattern: /\bundefined\b/, reason: "JavaScript undefined" },
+  { pattern: /\bMath\./, reason: "JavaScript Math namespace" },
+  { pattern: /&&|\|\|/, reason: "JavaScript boolean operator" },
+  { pattern: /=>/, reason: "JavaScript arrow function" },
+  { pattern: /\bscreen\.(?:fill|stroke|text|line)\s*\(/, reason: "JavaScript-style drawing API" },
+  { pattern: /\b(onMouseDown|onMouseUp|onKeyDown|addEventListener)\s*\(/, reason: "JavaScript event handler" }
+];
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -84,6 +110,22 @@ function sanitizeSegment(value) {
     .replace(/-+/g, "-")
     .replace(/_{2,}/g, "_")
     .substring(0, 40) || "item";
+}
+
+function sanitizeMicroScriptIdentifier(value, fallback = "item") {
+  let name = String(value || fallback)
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_{2,}/g, "_")
+    .substring(0, 40) || fallback;
+  if (/^[0-9]/.test(name)) {
+    name = `asset_${name}`;
+  }
+  if (MICRO_SCRIPT_RESERVED_WORDS.has(name) || MICROSTUDIO_API_GLOBALS.has(name)) {
+    name = `${name}_asset`;
+  }
+  return name;
 }
 
 function normalizeAspectRatio(value) {
@@ -297,9 +339,47 @@ function isUnsafeCode(content) {
 }
 
 function hasCoreFunctions(content) {
-  return /\binit\s*=\s*function\s*\(|\bfunction\s+init\s*\(|\binit\s*:\s*function\s*\(/.test(content) &&
-    /\bupdate\s*=\s*function\s*\(|\bfunction\s+update\s*\(|\bupdate\s*:\s*function\s*\(/.test(content) &&
-    /\bdraw\s*=\s*function\s*\(|\bfunction\s+draw\s*\(|\bdraw\s*:\s*function\s*\(/.test(content);
+  return /\binit\s*=\s*function\s*\(/.test(content) &&
+    /\bupdate\s*=\s*function\s*\(/.test(content) &&
+    /\bdraw\s*=\s*function\s*\(/.test(content);
+}
+
+function findMicroScriptSyntaxProblems(content) {
+  const problems = [];
+  if (typeof content !== "string") {
+    return ["content is not a string"];
+  }
+  for (const entry of MICRO_SCRIPT_FORBIDDEN_SYNTAX_PATTERNS) {
+    if (entry.pattern.test(content)) {
+      problems.push(entry.reason);
+    }
+  }
+
+  const apiOverwrite = content.match(/^\s*(screen|keyboard|mouse|touch|audio|system|sprites|maps|storage)\s*=/m);
+  if (apiOverwrite) {
+    problems.push(`overwrites built-in API global '${apiOverwrite[1]}'`);
+  }
+
+  const lifecycleOverwrite = content.match(/^\s*(init|update|draw)\s*=\s*(?!function\s*\()/m);
+  if (lifecycleOverwrite) {
+    problems.push(`overwrites lifecycle callback '${lifecycleOverwrite[1]}' with a non-function value`);
+  }
+
+  const functionParamPattern = /=\s*function\s*\(([^)]*)\)/g;
+  let match;
+  while ((match = functionParamPattern.exec(content)) !== null) {
+    const params = match[1]
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+    for (const param of params) {
+      if (MICRO_SCRIPT_RESERVED_WORDS.has(param) || MICROSTUDIO_API_GLOBALS.has(param)) {
+        problems.push(`uses reserved/API name '${param}' as a function parameter`);
+      }
+    }
+  }
+
+  return Array.from(new Set(problems));
 }
 
 function buildFallbackDoc(plan, generatedFiles) {
@@ -336,12 +416,13 @@ function buildGeneratedAssetManifest(imageAssets) {
   const lines = [
     "// Generated image asset manifest.",
     "// Reference these paths from your game code.",
-    "var GENERATED_IMAGE_ASSETS = {"
+    "generatedImageAssets = object"
   ];
   for (const asset of (Array.isArray(imageAssets) ? imageAssets : []).slice(0, 32)) {
-    lines.push(`  ${JSON.stringify(asset.id)}: ${JSON.stringify(asset.filename)},`);
+    const key = sanitizeMicroScriptIdentifier(asset && asset.id ? asset.id : "asset");
+    lines.push(`  ${key} = ${JSON.stringify(asset.filename)}`);
   }
-  lines.push("};", "");
+  lines.push("end", "");
   return lines.join("\n");
 }
 
@@ -392,51 +473,61 @@ function buildFallbackGameCode(plan, resolvedPhysics) {
   return useMatter
     ? `// ${title}
 // ${description}
-// Simple microScript Matter.js starter. Replace the placeholders after generating.
+// Safe microScript Matter.js starter. Keep object counts bounded for performance.
 
 game = object
   engine = 0
   world = 0
   player = 0
   spawned = []
-  lastSpawn = 0
+  spawnCounter = 0
+  maxBodies = 24
 end
 
 controlsText = ${controlText}
 
 resetGame = function()
-  game.spawned = []
-  game.lastSpawn = 0
   if game.world and game.engine then
     Matter.World.clear(game.world, false)
     Matter.Engine.clear(game.engine)
   end
+
+  game.spawned = []
+  game.spawnCounter = 0
   game.engine = Matter.Engine.create()
   game.world = game.engine.world
   game.world.gravity.y = 1
-  Matter.World.add(game.world, [
-    Matter.Bodies.rectangle(0,112,220,20,object
-      isStatic = true
-    end),
-    Matter.Bodies.rectangle(-110,0,20,240,object
-      isStatic = true
-    end),
-    Matter.Bodies.rectangle(110,0,20,240,object
-      isStatic = true
-    end),
-    Matter.Bodies.rectangle(0,-120,220,20,object
-      isStatic = true
-    end)
-  ])
-  game.player = Matter.Bodies.circle(-60,40,10,object
+
+  ground = Matter.Bodies.rectangle(0, 112, 220, 20, object
+    isStatic = true
+  end)
+  leftWall = Matter.Bodies.rectangle(-110, 0, 20, 240, object
+    isStatic = true
+  end)
+  rightWall = Matter.Bodies.rectangle(110, 0, 20, 240, object
+    isStatic = true
+  end)
+  topWall = Matter.Bodies.rectangle(0, -120, 220, 20, object
+    isStatic = true
+  end)
+
+  Matter.World.add(game.world, [ground, leftWall, rightWall, topWall])
+
+  game.player = Matter.Bodies.circle(-60, 40, 10, object
     frictionAir = 0.06
     restitution = 0.2
   end)
   Matter.World.add(game.world, game.player)
 end
 
-spawnStar = function()
-  local body = Matter.Bodies.circle(random.next()*80-40,-90,7,object
+spawnOrb = function()
+  if game.spawned.length >= game.maxBodies then
+    oldBody = game.spawned[0]
+    Matter.World.remove(game.world, oldBody)
+    game.spawned.remove(0)
+  end
+
+  body = Matter.Bodies.circle(random.next() * 80 - 40, -90, 7, object
     restitution = 0.6
   end)
   game.spawned.push(body)
@@ -444,11 +535,10 @@ spawnStar = function()
 end
 
 drawBody = function(body, color)
-  screen.setColor(color)
   if body.circleRadius then
     screen.fillCircle(body.position.x, body.position.y, body.circleRadius, color)
   else
-    local bounds = body.bounds
+    bounds = body.bounds
     screen.fillRect(body.position.x, body.position.y, bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y, color)
   end
 end
@@ -461,6 +551,12 @@ update = function()
   if not game.engine then
     resetGame()
   end
+
+  if keyboard.press.SPACE or keyboard.press.KEY_R then
+    resetGame()
+    return
+  end
+
   if keyboard.LEFT then
     Matter.Body.applyForce(game.player, game.player.position, object
       x = -0.0025
@@ -485,33 +581,32 @@ update = function()
       y = 0.003
     end)
   end
-  if keyboard.press.SPACE or keyboard.press.KEY_R then
-    resetGame()
+
+  game.spawnCounter += 1
+  if game.spawnCounter >= 90 then
+    game.spawnCounter = 0
+    spawnOrb()
   end
-  if game.lastSpawn > 1200 then
-    game.lastSpawn = 0
-    spawnStar()
-  else
-    game.lastSpawn += 16
-  end
-  Matter.Engine.update(game.engine, 1000/60)
+
+  Matter.Engine.update(game.engine, 1000 / 60)
 end
 
 draw = function()
-  screen.fillRect(0,0,screen.width,screen.height,"#08111f")
-  screen.setColor("#dbeafe")
+  screen.fillRect(0, 0, screen.width, screen.height, "#08111f")
   screen.drawText(${title}, 0, -92, 8, "#dbeafe")
   screen.drawText(controlsText, 0, 92, 5, "#cbd5e1")
   drawBody(game.player, "#38bdf8")
-  for i=0 to game.spawned.length-1
+
+  for i = 0 to game.spawned.length - 1
     drawBody(game.spawned[i], "#fbbf24")
   end
+
   screen.drawText("Press Space or R to restart", 0, 76, 5, "#94a3b8")
 end
 `
     : `// ${title}
 // ${description}
-// Simple microScript starter. Replace the placeholders after generating.
+// Safe microScript arcade starter. Keep active objects bounded for performance.
 
 game = object
   player = object
@@ -528,6 +623,7 @@ game = object
   gameOver = false
   message = "Use the arrow keys to move."
   time = 0
+  maxStars = 36
 end
 
 controlsText = ${controlText}
@@ -548,8 +644,12 @@ resetGame = function()
 end
 
 spawnStar = function()
-  local star = object
-    x = random.next()*180 - 90
+  if game.stars.length >= game.maxStars then
+    return
+  end
+
+  star = object
+    x = random.next() * 180 - 90
     y = -100
     vx = (random.next() - 0.5) * 0.7
     vy = 1.4 + random.next() * 1.2
@@ -558,8 +658,8 @@ spawnStar = function()
   game.stars.push(star)
 end
 
-hit = function(ax, ay, as, bx, by, bs)
-  return abs(ax - bx) < (as + bs) * 0.55 and abs(ay - by) < (as + bs) * 0.55
+hit = function(ax, ay, a_size, bx, b_y, b_size)
+  return abs(ax - bx) < (a_size + b_size) * 0.55 and abs(ay - b_y) < (a_size + b_size) * 0.55
 end
 
 init = function()
@@ -570,14 +670,18 @@ update = function()
   if not game then
     resetGame()
   end
+
   if keyboard.press.SPACE or keyboard.press.KEY_R then
     resetGame()
     return
   end
+
   if game.gameOver then
     return
   end
+
   game.time += 1
+
   if keyboard.LEFT then
     game.player.vx -= 0.5
   end
@@ -590,10 +694,12 @@ update = function()
   if keyboard.DOWN then
     game.player.vy += 0.5
   end
+
   game.player.vx *= 0.86
   game.player.vy *= 0.86
   game.player.x += game.player.vx
   game.player.y += game.player.vy
+
   if game.player.x < -94 then
     game.player.x = -94
   end
@@ -613,10 +719,11 @@ update = function()
     spawnStar()
   end
 
-  for i=game.stars.length-1 to 0 by -1
-    local star = game.stars[i]
+  for i = game.stars.length - 1 to 0 by -1
+    star = game.stars[i]
     star.x += star.vx
     star.y += star.vy
+
     if hit(game.player.x, game.player.y, game.player.size, star.x, star.y, star.size) then
       game.score += 1
       game.stars.remove(i)
@@ -631,17 +738,19 @@ update = function()
 end
 
 draw = function()
-  screen.fillRect(0,0,screen.width,screen.height,"#0f172a")
-  screen.setColor("#e2e8f0")
+  screen.fillRect(0, 0, screen.width, screen.height, "#0f172a")
   screen.drawText(${title}, 0, -92, 8, "#e2e8f0")
   screen.drawText("Score: " + game.score + "  Lives: " + game.lives, 0, -78, 5, "#cbd5e1")
   screen.drawText(controlsText, 0, 92, 5, "#cbd5e1")
+
   screen.fillCircle(game.player.x, game.player.y, game.player.size, "#38bdf8")
   screen.drawCircle(game.player.x, game.player.y, game.player.size + 1, "#0ea5e9")
-  for i=0 to game.stars.length-1
-    local star = game.stars[i]
+
+  for i = 0 to game.stars.length - 1
+    star = game.stars[i]
     screen.fillCircle(star.x, star.y, star.size, "#fbbf24")
   end
+
   if game.gameOver then
     screen.drawText("Game Over", 0, -6, 10, "#fca5a5")
     screen.drawText("Press Space or R to restart", 0, 10, 6, "#f8fafc")
@@ -763,22 +872,31 @@ class AiGameGeneratorService {
     const request = this.validateRequest(input);
     const resolvedPhysics = shouldUseMatter(request);
     const systemPrompt = [
-      "You are an expert microStudio microScript game developer.",
-      "Generate a complete but small starter 2D browser game project in microScript syntax, not JavaScript.",
-      "Return only valid JSON matching the provided schema.",
-      "Do not include markdown.",
-      "Do not include explanations outside JSON.",
-      "Do not include secrets, external network calls, unsafe code, or unsupported file paths.",
-      "Prefer simple readable microScript.",
-      resolvedPhysics ? "Matter.js is enabled for this request." : "Do not use Matter.js unless the game concept explicitly needs it.",
+      "You are an expert microStudio microScript game developer and performance-minded game engineer.",
+      "Generate a complete, playable starter 2D browser game project in microScript syntax only, never JavaScript.",
+      "Return only valid JSON matching the provided schema. No markdown, no code fences, no explanations outside JSON.",
+      "Use source/main.js in the JSON file list, but the content must be microScript because the server converts source/main.js to ms/main.ms.",
+      "Every code file must include exactly one init = function(), one update = function(), and one draw = function().",
+      "Do not use JavaScript syntax: no function name() {}, let, const, var, semicolons, null, undefined, ===, !==, &&, ||, Math.*, arrow functions, classes, imports, or browser event handlers.",
+      "Do not overwrite microStudio API globals such as screen, keyboard, mouse, touch, audio, system, sprites, maps, storage, or Matter.",
+      "Do not define functions or variables named touch or mouse; read the built-in touch and mouse objects inside update() instead.",
+      "Do not use reserved words as variable or parameter names: by, as, to, end, then, else, elsif, if, for, while, function, return, local, object, not, and, or.",
+      "Use safe names like a_size, b_y, body_list, handleClick, player_body, and spawnCounter.",
+      "Use microScript operators: and, or, not, ==, !=. Use floor(), abs(), min(), max(), random.next() rather than JavaScript Math.*.",
+      "Use microStudio drawing APIs such as screen.fillRect, screen.drawRect, screen.drawLine, screen.drawText, screen.fillCircle, and screen.drawCircle.",
+      "Keep update() lightweight: do not allocate large arrays in update/draw, cap active entities, remove off-screen objects, and keep loops bounded.",
+      "Keep draw() rendering simple: no per-frame asset generation, no expensive nested loops over large maps, and no unnecessary string building inside object loops.",
+      "Use simple deterministic game state stored in one game = object block and small helper functions.",
+      "Include restart logic using keyboard.press.SPACE or keyboard.press.KEY_R.",
+      "Do not include secrets, external network calls, eval, unsafe code, or unsupported file paths.",
+      resolvedPhysics ? "Matter.js is enabled for this request; create/clear the engine safely, keep body counts bounded, and step Matter.Engine.update once per update()." : "Do not use Matter.js unless the game concept explicitly needs rigid-body physics.",
       "Use source/*.js for code file entries and doc/*.md or doc/*.txt for docs.",
       "Put sprite and map metadata in the sprites and maps arrays instead of file entries.",
       request.generateImages ? "Include an imageAssets array with short, specific game-asset prompts, stable ids, normalized filenames, and usedByFile values." : "Do not include imageAssets unless the user explicitly enabled image generation.",
       request.generateImages ? `Use the image style ${request.imageStyle} and keep prompts consistent across all assets.` : "",
-      request.generateImages ? `Sprites should request transparent backgrounds when possible. Backgrounds should remain opaque.` : "",
-      "The generated project must have init, update, and draw functions, controls explanation, and restart logic.",
-      "Beginner difficulty should include comments explaining the code."
-    ].join(" ");
+      request.generateImages ? "Sprites should request transparent backgrounds when possible. Backgrounds should remain opaque." : "",
+      "Beginner difficulty should include concise comments explaining major sections, not comments on every line."
+    ].filter(Boolean).join(" ");
 
     const userPrompt = [
       `Idea: ${request.idea}`,
@@ -794,6 +912,13 @@ class AiGameGeneratorService {
       `Asset resolution: ${request.assetResolution}`,
       `Mode: ${request.mode}`,
       `Constraints: maxFiles=${request.constraints.maxFiles}, maxFileSizeKb=${request.constraints.maxFileSizeKb}, includeDocs=${request.constraints.includeDocs}, includeTutorialComments=${request.constraints.includeTutorialComments}`,
+      "MicroScript rules that must be followed in file.content:",
+      "- init = function() ... end, update = function() ... end, draw = function() ... end",
+      "- no JavaScript syntax, no semicolons, no braces, no let/const/var, no null",
+      "- never assign touch = function() or mouse = function(); use handleClick() and call it from update()",
+      "- cap active arrays: enemies/items/projectiles should have max counts and remove off-screen entries",
+      "- avoid reserved names by/as/to/end/then/else/if/for/while/function/return/local/object/not/and/or",
+      "- prefer readable, small helper functions and bounded loops",
       "Return this exact shape:",
       JSON.stringify({
           project: {
@@ -1377,8 +1502,17 @@ class AiGameGeneratorService {
         nextSteps: []
       }, resolvedPhysics);
     }
+    const syntaxProblems = findMicroScriptSyntaxProblems(code);
+    if (syntaxProblems.length > 0) {
+      warnings.push(`Invalid microScript in ${sourcePath || "source/main.js"}; fallback inserted. Problems: ${syntaxProblems.slice(0, 5).join(", ")}`);
+      return buildFallbackGameCode({
+        project: { title: this.fallbackTitle(request.idea), description: request.idea },
+        gameDesign: this.validateGameDesign({}, request),
+        nextSteps: []
+      }, resolvedPhysics);
+    }
     if (!hasCoreFunctions(code)) {
-      warnings.push(`Missing init/update/draw in ${sourcePath || "source/main.js"}; fallback starter inserted.`);
+      warnings.push(`Missing microScript init/update/draw callbacks in ${sourcePath || "source/main.js"}; fallback starter inserted.`);
       return buildFallbackGameCode({
         project: { title: this.fallbackTitle(request.idea), description: request.idea },
         gameDesign: this.validateGameDesign({}, request),
