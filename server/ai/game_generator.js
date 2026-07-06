@@ -26,6 +26,7 @@ const DANGEROUS_CODE_PATTERNS = [
   /\bXMLHttpRequest\b/i,
   /\bWebSocket\b/i,
   /\bEventSource\b/i,
+  /(^|[^\w])var\s+[a-zA-Z_]/i,
   /<script\b/i,
   /<iframe\b/i,
   /document\.write\s*\(/i,
@@ -388,12 +389,265 @@ function buildFallbackGameCode(plan, resolvedPhysics) {
     ? plan.gameDesign.controls.join(" | ")
     : "Arrow keys to move. Space or R to restart.");
   const useMatter = resolvedPhysics === "matterjs";
+  return useMatter
+    ? `// ${title}
+// ${description}
+// Simple microScript Matter.js starter. Replace the placeholders after generating.
 
-  if (useMatter) {
-    return `// ${title}\n// ${description}\n// Simple Matter.js starter. Replace the placeholders after generating.\n\nvar game;\nvar engine;\nvar world;\nvar player;\nvar score = 0;\nvar spawned = [];\nvar lastSpawn = 0;\nvar controlsText = ${controlText};\n\nfunction resetGame() {\n  score = 0;\n  spawned = [];\n  if (world && engine) {\n    Matter.World.clear(world, false);\n    Matter.Engine.clear(engine);\n  }\n  engine = Matter.Engine.create();\n  world = engine.world;\n  world.gravity.y = 1;\n  Matter.World.add(world, [\n    Matter.Bodies.rectangle(0, 112, 220, 20, { isStatic: true }),\n    Matter.Bodies.rectangle(-110, 0, 20, 240, { isStatic: true }),\n    Matter.Bodies.rectangle(110, 0, 20, 240, { isStatic: true }),\n    Matter.Bodies.rectangle(0, -120, 220, 20, { isStatic: true })\n  ]);\n  player = Matter.Bodies.circle(-60, 40, 10, { frictionAir: 0.06, restitution: 0.2 });\n  Matter.World.add(world, player);\n}\n\ninit = function() {\n  resetGame();\n};\n\nupdate = function() {\n  if (!engine) {\n    resetGame();\n  }\n  if (keyboard.LEFT) {\n    Matter.Body.applyForce(player, player.position, { x: -0.0025, y: 0 });\n  }\n  if (keyboard.RIGHT) {\n    Matter.Body.applyForce(player, player.position, { x: 0.0025, y: 0 });\n  }\n  if (keyboard.UP) {\n    Matter.Body.applyForce(player, player.position, { x: 0, y: -0.003 });\n  }\n  if (keyboard.DOWN) {\n    Matter.Body.applyForce(player, player.position, { x: 0, y: 0.003 });\n  }\n  if (keyboard.press.SPACE || keyboard.press.KEY_R) {\n    resetGame();\n  }\n  if (Date.now() - lastSpawn > 1200) {\n    lastSpawn = Date.now();\n    var body = Matter.Bodies.circle(Math.random() * 80 - 40, -90, 7, { restitution: 0.6 });\n    spawned.push(body);\n    Matter.World.add(world, body);\n  }\n  Matter.Engine.update(engine, 1000 / 60);\n};\n\nfunction drawBody(body, color) {\n  screen.setColor(color);\n  if (body.circleRadius != null) {\n    screen.fillCircle(body.position.x, body.position.y, body.circleRadius, color);\n  } else {\n    var bounds = body.bounds;\n    screen.fillRect(body.position.x, body.position.y, bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y, color);\n  }\n}\n\ndraw = function() {\n  screen.clear(\"#08111f\");\n  screen.setColor(\"#dbeafe\");\n  screen.drawText(${title}, 0, -92, 8, \"#dbeafe\");\n  screen.drawText(${controlText}, 0, 92, 5, \"#cbd5e1\");\n  drawBody(player, \"#38bdf8\");\n  for (var i = 0; i < spawned.length; i++) {\n    drawBody(spawned[i], \"#fbbf24\");\n  }\n  screen.drawText(\"Press Space or R to restart\", 0, 76, 5, \"#94a3b8\");\n};\n`;
-  }
+game = object
+  engine = 0
+  world = 0
+  player = 0
+  spawned = []
+  lastSpawn = 0
+end
 
-  return `// ${title}\n// ${description}\n// Simple manual starter. Replace the placeholders after generating.\n\nvar game;\nvar controlsText = ${controlText};\n\nfunction resetGame() {\n  game = {\n    player: { x: 0, y: 62, vx: 0, vy: 0, size: 12 },\n    stars: [],\n    score: 0,\n    lives: 3,\n    spawnTimer: 0,\n    gameOver: false,\n    message: \"Use the arrow keys to move.\",\n    time: 0\n  };\n}\n\nfunction spawnStar() {\n  game.stars.push({\n    x: Math.random() * 180 - 90,\n    y: -100,\n    vx: (Math.random() - 0.5) * 0.7,\n    vy: 1.4 + Math.random() * 1.2,\n    size: 8\n  });\n}\n\nfunction hit(ax, ay, as, bx, by, bs) {\n  return Math.abs(ax - bx) < (as + bs) * 0.55 && Math.abs(ay - by) < (as + bs) * 0.55;\n}\n\ninit = function() {\n  resetGame();\n};\n\nupdate = function() {\n  if (!game) {\n    resetGame();\n  }\n  if (keyboard.press.SPACE || keyboard.press.KEY_R) {\n    resetGame();\n    return;\n  }\n  if (game.gameOver) {\n    return;\n  }\n  game.time += 1;\n  if (keyboard.LEFT) {\n    game.player.vx -= 0.5;\n  }\n  if (keyboard.RIGHT) {\n    game.player.vx += 0.5;\n  }\n  if (keyboard.UP) {\n    game.player.vy -= 0.5;\n  }\n  if (keyboard.DOWN) {\n    game.player.vy += 0.5;\n  }\n  game.player.vx *= 0.86;\n  game.player.vy *= 0.86;\n  game.player.x += game.player.vx;\n  game.player.y += game.player.vy;\n  game.player.x = Math.max(-94, Math.min(94, game.player.x));\n  game.player.y = Math.max(-84, Math.min(84, game.player.y));\n\n  game.spawnTimer -= 1;\n  if (game.spawnTimer <= 0) {\n    game.spawnTimer = 32;\n    spawnStar();\n  }\n\n  for (var i = game.stars.length - 1; i >= 0; i--) {\n    var star = game.stars[i];\n    star.x += star.vx;\n    star.y += star.vy;\n    if (hit(game.player.x, game.player.y, game.player.size, star.x, star.y, star.size)) {\n      game.score += 1;\n      game.stars.splice(i, 1);\n      continue;\n    }\n    if (star.y > 110) {\n      game.stars.splice(i, 1);\n      game.lives -= 1;\n      if (game.lives <= 0) {\n        game.gameOver = true;\n      }\n    }\n  }\n};\n\ndraw = function() {\n  screen.clear(\"#0f172a\");\n  screen.setColor(\"#e2e8f0\");\n  screen.drawText(${title}, 0, -92, 8, \"#e2e8f0\");\n  screen.drawText(\"Score: \" + game.score + \"  Lives: \" + game.lives, 0, -78, 5, \"#cbd5e1\");\n  screen.drawText(controlsText, 0, 92, 5, \"#cbd5e1\");\n  screen.fillCircle(game.player.x, game.player.y, game.player.size, \"#38bdf8\");\n  screen.drawCircle(game.player.x, game.player.y, game.player.size + 1, \"#0ea5e9\");\n  for (var i = 0; i < game.stars.length; i++) {\n    var star = game.stars[i];\n    screen.fillCircle(star.x, star.y, star.size, \"#fbbf24\");\n  }\n  if (game.gameOver) {\n    screen.drawText(\"Game Over\", 0, -6, 10, \"#fca5a5\");\n    screen.drawText(\"Press Space or R to restart\", 0, 10, 6, \"#f8fafc\");\n  }\n};\n`;
+controlsText = ${controlText}
+
+resetGame = function()
+  game.spawned = []
+  game.lastSpawn = 0
+  if game.world and game.engine then
+    Matter.World.clear(game.world, false)
+    Matter.Engine.clear(game.engine)
+  end
+  game.engine = Matter.Engine.create()
+  game.world = game.engine.world
+  game.world.gravity.y = 1
+  Matter.World.add(game.world, [
+    Matter.Bodies.rectangle(0,112,220,20,object
+      isStatic = true
+    end),
+    Matter.Bodies.rectangle(-110,0,20,240,object
+      isStatic = true
+    end),
+    Matter.Bodies.rectangle(110,0,20,240,object
+      isStatic = true
+    end),
+    Matter.Bodies.rectangle(0,-120,220,20,object
+      isStatic = true
+    end)
+  ])
+  game.player = Matter.Bodies.circle(-60,40,10,object
+    frictionAir = 0.06
+    restitution = 0.2
+  end)
+  Matter.World.add(game.world, game.player)
+end
+
+spawnStar = function()
+  local body = Matter.Bodies.circle(random.next()*80-40,-90,7,object
+    restitution = 0.6
+  end)
+  game.spawned.push(body)
+  Matter.World.add(game.world, body)
+end
+
+drawBody = function(body, color)
+  screen.setColor(color)
+  if body.circleRadius then
+    screen.fillCircle(body.position.x, body.position.y, body.circleRadius, color)
+  else
+    local bounds = body.bounds
+    screen.fillRect(body.position.x, body.position.y, bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y, color)
+  end
+end
+
+init = function()
+  resetGame()
+end
+
+update = function()
+  if not game.engine then
+    resetGame()
+  end
+  if keyboard.LEFT then
+    Matter.Body.applyForce(game.player, game.player.position, object
+      x = -0.0025
+      y = 0
+    end)
+  end
+  if keyboard.RIGHT then
+    Matter.Body.applyForce(game.player, game.player.position, object
+      x = 0.0025
+      y = 0
+    end)
+  end
+  if keyboard.UP then
+    Matter.Body.applyForce(game.player, game.player.position, object
+      x = 0
+      y = -0.003
+    end)
+  end
+  if keyboard.DOWN then
+    Matter.Body.applyForce(game.player, game.player.position, object
+      x = 0
+      y = 0.003
+    end)
+  end
+  if keyboard.press.SPACE or keyboard.press.KEY_R then
+    resetGame()
+  end
+  if game.lastSpawn > 1200 then
+    game.lastSpawn = 0
+    spawnStar()
+  else
+    game.lastSpawn += 16
+  end
+  Matter.Engine.update(game.engine, 1000/60)
+end
+
+draw = function()
+  screen.fillRect(0,0,screen.width,screen.height,"#08111f")
+  screen.setColor("#dbeafe")
+  screen.drawText(${title}, 0, -92, 8, "#dbeafe")
+  screen.drawText(controlsText, 0, 92, 5, "#cbd5e1")
+  drawBody(game.player, "#38bdf8")
+  for i=0 to game.spawned.length-1
+    drawBody(game.spawned[i], "#fbbf24")
+  end
+  screen.drawText("Press Space or R to restart", 0, 76, 5, "#94a3b8")
+end
+`
+    : `// ${title}
+// ${description}
+// Simple microScript starter. Replace the placeholders after generating.
+
+game = object
+  player = object
+    x = 0
+    y = 62
+    vx = 0
+    vy = 0
+    size = 12
+  end
+  stars = []
+  score = 0
+  lives = 3
+  spawnTimer = 0
+  gameOver = false
+  message = "Use the arrow keys to move."
+  time = 0
+end
+
+controlsText = ${controlText}
+
+resetGame = function()
+  game.player.x = 0
+  game.player.y = 62
+  game.player.vx = 0
+  game.player.vy = 0
+  game.player.size = 12
+  game.stars = []
+  game.score = 0
+  game.lives = 3
+  game.spawnTimer = 0
+  game.gameOver = false
+  game.message = "Use the arrow keys to move."
+  game.time = 0
+end
+
+spawnStar = function()
+  local star = object
+    x = random.next()*180 - 90
+    y = -100
+    vx = (random.next() - 0.5) * 0.7
+    vy = 1.4 + random.next() * 1.2
+    size = 8
+  end
+  game.stars.push(star)
+end
+
+hit = function(ax, ay, as, bx, by, bs)
+  return abs(ax - bx) < (as + bs) * 0.55 and abs(ay - by) < (as + bs) * 0.55
+end
+
+init = function()
+  resetGame()
+end
+
+update = function()
+  if not game then
+    resetGame()
+  end
+  if keyboard.press.SPACE or keyboard.press.KEY_R then
+    resetGame()
+    return
+  end
+  if game.gameOver then
+    return
+  end
+  game.time += 1
+  if keyboard.LEFT then
+    game.player.vx -= 0.5
+  end
+  if keyboard.RIGHT then
+    game.player.vx += 0.5
+  end
+  if keyboard.UP then
+    game.player.vy -= 0.5
+  end
+  if keyboard.DOWN then
+    game.player.vy += 0.5
+  end
+  game.player.vx *= 0.86
+  game.player.vy *= 0.86
+  game.player.x += game.player.vx
+  game.player.y += game.player.vy
+  if game.player.x < -94 then
+    game.player.x = -94
+  end
+  if game.player.x > 94 then
+    game.player.x = 94
+  end
+  if game.player.y < -84 then
+    game.player.y = -84
+  end
+  if game.player.y > 84 then
+    game.player.y = 84
+  end
+
+  game.spawnTimer -= 1
+  if game.spawnTimer <= 0 then
+    game.spawnTimer = 32
+    spawnStar()
+  end
+
+  for i=game.stars.length-1 to 0 by -1
+    local star = game.stars[i]
+    star.x += star.vx
+    star.y += star.vy
+    if hit(game.player.x, game.player.y, game.player.size, star.x, star.y, star.size) then
+      game.score += 1
+      game.stars.remove(i)
+    elsif star.y > 110 then
+      game.stars.remove(i)
+      game.lives -= 1
+      if game.lives <= 0 then
+        game.gameOver = true
+      end
+    end
+  end
+end
+
+draw = function()
+  screen.fillRect(0,0,screen.width,screen.height,"#0f172a")
+  screen.setColor("#e2e8f0")
+  screen.drawText(${title}, 0, -92, 8, "#e2e8f0")
+  screen.drawText("Score: " + game.score + "  Lives: " + game.lives, 0, -78, 5, "#cbd5e1")
+  screen.drawText(controlsText, 0, 92, 5, "#cbd5e1")
+  screen.fillCircle(game.player.x, game.player.y, game.player.size, "#38bdf8")
+  screen.drawCircle(game.player.x, game.player.y, game.player.size + 1, "#0ea5e9")
+  for i=0 to game.stars.length-1
+    local star = game.stars[i]
+    screen.fillCircle(star.x, star.y, star.size, "#fbbf24")
+  end
+  if game.gameOver then
+    screen.drawText("Game Over", 0, -6, 10, "#fca5a5")
+    screen.drawText("Press Space or R to restart", 0, 10, 6, "#f8fafc")
+  end
+end
+`;
 }
 
 function createPreviewDataUrl(buffer) {
@@ -477,7 +731,7 @@ class AiGameGeneratorService {
   validateRequest(input) {
     const request = {
       idea: typeof input.idea === "string" ? input.idea.trim() : "",
-      language: input.language === "JavaScript" ? "JavaScript" : "JavaScript",
+      language: "microScript",
       physics: ["none", "auto", "matterjs"].includes(input.physics) ? input.physics : "auto",
       difficulty: ["beginner", "intermediate", "advanced"].includes(input.difficulty) ? input.difficulty : "beginner",
       artStyle: ["placeholder", "pixel-art", "simple-shapes"].includes(input.artStyle) ? input.artStyle : "placeholder",
@@ -509,13 +763,13 @@ class AiGameGeneratorService {
     const request = this.validateRequest(input);
     const resolvedPhysics = shouldUseMatter(request);
     const systemPrompt = [
-      "You are an expert microStudio JavaScript game developer.",
-      "Generate a complete but small starter 2D browser game project.",
+      "You are an expert microStudio microScript game developer.",
+      "Generate a complete but small starter 2D browser game project in microScript syntax, not JavaScript.",
       "Return only valid JSON matching the provided schema.",
       "Do not include markdown.",
       "Do not include explanations outside JSON.",
       "Do not include secrets, external network calls, unsafe code, or unsupported file paths.",
-      "Prefer simple readable JavaScript.",
+      "Prefer simple readable microScript.",
       resolvedPhysics ? "Matter.js is enabled for this request." : "Do not use Matter.js unless the game concept explicitly needs it.",
       "Use source/*.js for code file entries and doc/*.md or doc/*.txt for docs.",
       "Put sprite and map metadata in the sprites and maps arrays instead of file entries.",
@@ -542,14 +796,14 @@ class AiGameGeneratorService {
       `Constraints: maxFiles=${request.constraints.maxFiles}, maxFileSizeKb=${request.constraints.maxFileSizeKb}, includeDocs=${request.constraints.includeDocs}, includeTutorialComments=${request.constraints.includeTutorialComments}`,
       "Return this exact shape:",
       JSON.stringify({
-        project: {
-          title: "string",
-          slug: "string",
-          description: "string",
-          language: "JavaScript",
-          graphics: "basic",
-          libraries: resolvedPhysics ? ["matter.js"] : [],
-          aspectRatio: "16:9",
+          project: {
+            title: "string",
+            slug: "string",
+            description: "string",
+            language: "microScript",
+            graphics: "basic",
+            libraries: resolvedPhysics ? ["matter.js"] : [],
+            aspectRatio: "16:9",
           orientation: "landscape",
           difficulty: request.difficulty
         },
@@ -725,7 +979,7 @@ class AiGameGeneratorService {
         title,
         slug,
         description,
-        language: "JavaScript",
+        language: "microScript",
         graphics: "basic",
         libraries,
         aspectRatio: request.aspectRatio,
