@@ -23,6 +23,20 @@ function normalizeBaseUrl(value) {
   return String(value || "").trim().replace(/\/+$/, "");
 }
 
+function normalizeWorkflow(value) {
+  if (value == null || value === "") {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value.trim().slice(0, 20000);
+  }
+  try {
+    return JSON.stringify(value).slice(0, 20000);
+  } catch (err) {
+    return "";
+  }
+}
+
 function normalizeProfileId(value) {
   if (value == null || value === "") {
     return null;
@@ -71,6 +85,8 @@ class AiProviderStore {
       timeoutMs: parseNumber(input.timeoutMs, existing.timeoutMs != null ? existing.timeoutMs : 60000),
       enabled: input.enabled != null ? !!input.enabled : existing.enabled !== false,
       isDefault: input.isDefault != null ? !!input.isDefault : existing.isDefault === true,
+      workflow: Object.prototype.hasOwnProperty.call(input, "workflow") ? normalizeWorkflow(input.workflow) : normalizeWorkflow(existing.workflow),
+      clientId: typeof input.clientId === "string" ? input.clientId.trim().slice(0, 120) : (existing.clientId || ""),
       updatedAt: nowIso()
     };
 
@@ -109,6 +125,7 @@ class AiProviderStore {
       enabled: profile.enabled !== false,
       isDefault: profile.isDefault === true,
       hasApiKey: !!profile.apiKeyEncrypted,
+      hasWorkflow: !!profile.workflow,
       createdAt: profile.createdAt || null,
       updatedAt: profile.updatedAt || null
     };
@@ -117,6 +134,8 @@ class AiProviderStore {
   toRuntimeProfile(data, id) {
     const profile = this.toPublicProfile(data, id);
     profile.apiKey = data && data.apiKeyEncrypted ? this.getCrypto().decrypt(data.apiKeyEncrypted) : "";
+    profile.workflow = data && data.workflow ? data.workflow : "";
+    profile.clientId = data && data.clientId ? data.clientId : "";
     return profile;
   }
 

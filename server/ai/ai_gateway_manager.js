@@ -1,5 +1,10 @@
 const { AiProviderStore, normalizePurpose } = require("./ai_provider_store.js");
 const { createChatCompletion } = require("./openai_compatible_client.js");
+const {
+  PlaceholderImageProvider,
+  OpenAIImageProvider,
+  ComfyUIProvider
+} = require("./image_providers.js");
 
 function parseBooleanEnv(value) {
   return String(value || "").toLowerCase() === "true" || value === "1";
@@ -22,7 +27,23 @@ class AiGatewayManager {
     this.store = options.store || new AiProviderStore(server.db, {
       crypto: this.crypto
     });
+    this.imageProviders = {
+      openai: () => new OpenAIImageProvider(this.getConfiguredImageProviderOptions("openai")),
+      comfyui: () => new ComfyUIProvider(this.getConfiguredImageProviderOptions("comfyui")),
+      placeholder: () => new PlaceholderImageProvider()
+    };
     this.enableUsageLogs = options.enableUsageLogs != null ? options.enableUsageLogs : parseBooleanEnv(process.env.AI_GATEWAY_ENABLE_USAGE_LOGS);
+  }
+
+  getGatewayConfig() {
+    return this.server && this.server.config && this.server.config.ai_gateway ? this.server.config.ai_gateway : {};
+  }
+
+  getConfiguredImageProviderOptions(providerName) {
+    const config = this.getGatewayConfig();
+    const imageProviders = config.imageProviders || config.image_providers || {};
+    const selected = imageProviders[providerName] || config[providerName] || {};
+    return selected && typeof selected === "object" ? selected : {};
   }
 
   toPublicDto(profile) {
@@ -120,6 +141,81 @@ class AiGatewayManager {
     }
 
     throw safeError("No AI provider configured");
+  }
+
+  resolveImageProviderProfile(input = {}, purpose = "image") {
+    const requestedId = input.imageProviderProfileId != null && String(input.imageProviderProfileId).length > 0 ? String(input.imageProviderProfileId) : null;
+    if (requestedId) {
+      const requested = this.store.getRuntimeById(requestedId);
+      if (!requested) {
+        throw safeError("Requested provider profile not found");
+      }
+      if (requested.enabled === false) {
+        throw safeError("Requested provider profile is disabled");
+      }
+      if (normalizePurpose(requested.purpose) !== normalizePurpose(purpose) && normalizePurpose(requested.purpose) !== "both") {
+        throw safeError("Requested provider profile is not available for this purpose");
+      }
+      return requested;
+    }
+
+    const configuredGateway = this.getGatewayConfig();
+    const configuredId = configuredGateway.imageProviderProfileId != null && String(configuredGateway.imageProviderProfileId).length > 0
+      ? String(configuredGateway.imageProviderProfileId)
+      : null;
+    if (configuredId) {
+      const configured = this.store.getRuntimeById(configuredId);
+      if (!configured) {
+        throw safeError("Requested provider profile not found");
+      }
+      if (configured.enabled === false) {
+        throw safeError("Requested provider profile is disabled");
+      }
+      if (normalizePurpose(configured.purpose) !== normalizePurpose(purpose) && normalizePurpose(configured.purpose) !== "both") {
+        throw safeError("Requested provider profile is not available for this purpose");
+      }
+      return configured;
+    }
+
+    return null;
+  }
+
+  getImageProvider(input = {}) {
+    const providerName = input.imageProvider != null && String(input.imageProvider).length > 0 ? String(input.imageProvider) : null;
+    if (providerName === "placeholder") {
+      return this.imageProviders.placeholder();
+    }
+    const profile = this.resolveImageProviderProfile(input, "image");
+
+    if (profile) {
+      if (profile.type === "comfyui") {
+        return new ComfyUIProvider({
+          baseUrl: profile.baseUrl,
+          workflow: profile.workflow,
+          clientId: profile.clientId
+        });
+      }
+      if (profile.type === "placeholder") {
+        return new PlaceholderImageProvider();
+      }
+      return new OpenAIImageProvider({
+        apiKey: profile.apiKey,
+        model: profile.modelId,
+        baseUrl: profile.baseUrl
+      });
+    }
+
+    if (providerName && this.imageProviders[providerName]) {
+      return this.imageProviders[providerName]();
+    }
+
+    const configuredGateway = this.getGatewayConfig();
+    const configuredName = typeof configuredGateway.imageProvider === "string" ? configuredGateway.imageProvider : "placeholder";
+    if (this.imageProviders[configuredName]) {
+      return this.imageProviders[configuredName]();
+    }
+
+    return this.imageProviders.placeholder();
   }
 
   async generate(input) {

@@ -1,5 +1,17 @@
 {
   "gateway": {
-    "providerProfileId": null
+    "providerProfileId": null,
+    "imageProviderProfileId": null,
+    "imageProvider": "placeholder",
+    "imageProviders": {
+      "openai": {
+        "baseUrl": "https://api.openai.com/v1",
+        "model": "gpt-image-2"
+      },
+      "comfyui": {
+        "baseUrl": "http://127.0.0.1:8188",
+        "workflow": {}
+      }
+    }
   }
 }

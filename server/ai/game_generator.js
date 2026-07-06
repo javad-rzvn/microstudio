@@ -344,6 +344,43 @@ function buildGeneratedAssetManifest(imageAssets) {
   return lines.join("\n");
 }
 
+function buildGeneratedAssetManifestFile(normalized, request) {
+  const payload = {
+    generatedAt: normalized.generatedAt || Date.now(),
+    project: normalized.project || null,
+    resolvedPhysicsMode: normalized.resolvedPhysicsMode || null,
+    imageAssets: Array.isArray(normalized.imageAssets)
+      ? normalized.imageAssets.map((asset) => ({
+        id: asset.id,
+        type: asset.type,
+        filename: asset.filename,
+        usedByFile: asset.usedByFile,
+        width: asset.width,
+        height: asset.height,
+        transparentBackground: asset.transparentBackground,
+        provider: asset.provider,
+        style: asset.style
+      }))
+      : [],
+    request: {
+      generateImages: request.generateImages === true,
+      imageProvider: request.imageProvider || "placeholder",
+      imageProviderProfileId: request.imageProviderProfileId || null,
+      imageStyle: request.imageStyle || "pixel-art",
+      transparentSprites: request.transparentSprites !== false,
+      assetResolution: request.assetResolution || "64x64"
+    }
+  };
+  return {
+    path: "doc/generated-assets.json",
+    type: "doc",
+    content: JSON.stringify(payload, null, 2),
+    encoding: "utf8",
+    sourcePath: "doc/generated-assets.json",
+    preview: "Generated image asset manifest"
+  };
+}
+
 function buildFallbackGameCode(plan, resolvedPhysics) {
   const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
   const description = JSON.stringify((plan.project && plan.project.description) || "");
@@ -447,6 +484,7 @@ class AiGameGeneratorService {
       aspectRatio: ["16:9", "4:3", "1:1", "portrait"].includes(input.aspectRatio) ? input.aspectRatio : "16:9",
       generateImages: input.generateImages === true,
       imageProvider: normalizeImageProvider(typeof input.imageProvider === "string" ? input.imageProvider : "placeholder"),
+      imageProviderProfileId: input.imageProviderProfileId != null ? String(input.imageProviderProfileId) : null,
       imageStyle: normalizeImageStyle(typeof input.imageStyle === "string" ? input.imageStyle : "pixel-art"),
       transparentSprites: input.transparentSprites !== false,
       assetResolution: normalizeAssetResolution(typeof input.assetResolution === "string" ? input.assetResolution : "64x64"),
@@ -756,6 +794,7 @@ class AiGameGeneratorService {
         mainFile.content = `${manifest}${mainFile.content}`;
         mainFile.preview = mainFile.content.slice(0, 2000);
       }
+      normalized.files.push(buildGeneratedAssetManifestFile(normalized, request));
     }
 
     return normalized;
@@ -961,7 +1000,12 @@ class AiGameGeneratorService {
 
   async generateImageAssetFiles(imageAssets, request, warnings, title, slug, user) {
     const items = [];
-    const provider = this.getImageProvider(request.imageProvider);
+    const provider = this.gateway && typeof this.gateway.getImageProvider === "function"
+      ? this.gateway.getImageProvider({
+        imageProvider: request.imageProvider,
+        imageProviderProfileId: request.imageProviderProfileId
+      })
+      : this.getImageProvider(request.imageProvider);
     const assetsList = Array.isArray(imageAssets) ? imageAssets : [];
     for (const asset of assetsList) {
       const rendered = await this.renderImageAsset(provider, asset, request, warnings, title, slug, user);
@@ -1475,7 +1519,20 @@ class AiGameGeneratorService {
     asset.style = request.imageStyle;
     const warnings = Array.isArray(draft.warnings) ? draft.warnings.slice() : [];
     const normalizedProjectTitle = draft.project && draft.project.title ? draft.project.title : this.fallbackTitle(request.idea);
-    const generated = await this.renderImageAsset(this.getImageProvider(request.imageProvider), asset, request, warnings, normalizedProjectTitle, draft.project && draft.project.slug ? draft.project.slug : "", user);
+    const generated = await this.renderImageAsset(
+      this.gateway && typeof this.gateway.getImageProvider === "function"
+        ? this.gateway.getImageProvider({
+          imageProvider: request.imageProvider,
+          imageProviderProfileId: request.imageProviderProfileId
+        })
+        : this.getImageProvider(request.imageProvider),
+      asset,
+      request,
+      warnings,
+      normalizedProjectTitle,
+      draft.project && draft.project.slug ? draft.project.slug : "",
+      user
+    );
     const nextImageAssets = assets.map((entry, idx) => idx === index ? Object.assign({}, asset, {
       accepted: input.accepted != null ? !!input.accepted : entry.accepted !== false,
       previewDataUrl: generated.previewDataUrl,
