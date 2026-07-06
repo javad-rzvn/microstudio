@@ -767,6 +767,7 @@ class AppUI
       @setAiBusy false
       @setAiStatus(err.message or "Generation failed", true)
       @setAiWarnings [err.message or "Generation failed"]
+    )
 
   regenerateAiDraft:()->
     if not @aiDraft?
@@ -784,6 +785,7 @@ class AppUI
       @setAiBusy false
       @setAiStatus(err.message or "Regeneration failed", true)
       @setAiWarnings [err.message or "Regeneration failed"]
+    )
 
   explainAiDraft:()->
     if not @aiDraft?
@@ -803,6 +805,7 @@ class AppUI
       @setAiBusy false
       @setAiStatus(err.message or "Explanation failed", true)
       @setAiExplanation ""
+    )
 
   applyAiDraft:(mode)->
     return @setAiStatus("Generate a draft first.",true) if not @aiDraft?
@@ -835,6 +838,7 @@ class AppUI
           @setAiBusy false
           @setAiStatus(err.message or "Apply failed", true)
           @setAiWarnings [err.message or "Apply failed"]
+        )
       if applyToCurrentProject and @app.project? and @app.project.pending_changes.length > 0
         @app.project.savePendingChanges ()=>
           saveAndApply()
