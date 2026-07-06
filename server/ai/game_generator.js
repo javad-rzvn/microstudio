@@ -9,7 +9,7 @@ const {
 } = require("./image_providers.js");
 
 const ALLOWED_ROOTS = new Set(["source", "sprites", "maps", "assets", "sounds", "music", "doc", "backgrounds", "ui"]);
-const ALLOWED_EXTENSIONS = new Set(["js", "json", "md", "txt"]);
+const ALLOWED_EXTENSIONS = new Set(["js", "ms", "json", "md", "txt"]);
 const ALLOWED_IMAGE_EXTENSIONS = new Set(["png", "webp"]);
 const ALLOWED_IMAGE_PROVIDERS = new Set(["openai", "comfyui", "placeholder"]);
 const ALLOWED_IMAGE_STYLES = new Set(["pixel-art", "cartoon", "flat-vector", "simple-shapes", "hand-drawn", "fantasy", "sci-fi"]);
