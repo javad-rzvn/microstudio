@@ -44,6 +44,7 @@ class @RunWindow
     @project_access = new ProjectAccess @app,null,@
 
     @server_bar = new ServerBar @app
+    @latestError = null
 
   initWarnings:()->
     document.getElementById("console-options-warning-undefined").addEventListener "change",()=>
@@ -377,6 +378,36 @@ class @RunWindow
     else
       @terminal.error "#{error}"
 
+    @rememberLatestError err
+
+  rememberLatestError:(err)->
+    return @clearLatestError() if not err?
+    return if err.type? and err.type in [
+      "non_function"
+      "undefined_variable"
+      "assigning_undefined"
+      "assigning_api_variable"
+      "assignment_as_condition"
+    ]
+    errorText = err.error or err.message or ""
+    return if not errorText
+    @latestError =
+      type: err.type or "runtime"
+      error: errorText
+      message: errorText
+      file: err.file or null
+      line: err.line or null
+      column: err.column or null
+      stack: err.stack or ""
+      expression: err.expression or ""
+    if @app.appui? and typeof @app.appui.setFixErrorLatestError == "function"
+      @app.appui.setFixErrorLatestError @latestError
+
+  clearLatestError:()->
+    @latestError = null
+    if @app.appui? and typeof @app.appui.setFixErrorLatestError == "function"
+      @app.appui.setFixErrorLatestError null
+
   annotateWarning:(warning,info)->
 #    if @app.editor.selected_source == info.file
       source = @app.project.getSource(info.file)
@@ -397,6 +428,7 @@ class @RunWindow
       switch msg.name
         when "error"
           if msg.data
+            @rememberLatestError msg.data
             @logError msg.data
             if @app.editor.selected_source == msg.data.file
               source = @app.project.getSource(msg.data.file)
@@ -417,6 +449,8 @@ class @RunWindow
               # @terminal.clear()
               source.annotations = []
               @app.project.notifyListeners "annotations"
+          if @latestError? and (@latestError.file == msg.file or @latestError.file == msg.file?.replace(/\//g,"-"))
+            @clearLatestError()
         when "log"
           @terminal.echo msg.data
 
@@ -541,6 +575,7 @@ class @RunWindow
 
     document.querySelector("#runtime-server-view").innerHTML = ""
     @app.appui.server_splitbar.closed1 = true
+    @clearLatestError()
     return
 
   hideQRCode:()->

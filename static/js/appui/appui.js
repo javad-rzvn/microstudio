@@ -74,7 +74,9 @@ AppUI = class AppUI {
     //@setSection("options")
     this.createLoginFunctions();
     this.createAiGeneratorFunctions();
-    this.createAiFixErrorFunctions();
+    if (typeof this.createAiFixErrorFunctions === "function") {
+      this.createAiFixErrorFunctions();
+    }
     this.updateAiProviderVisibility();
     advanced = document.getElementById("advanced-create-project-options-button");
     this.setAction("create-project-button", () => {

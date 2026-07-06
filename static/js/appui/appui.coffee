@@ -76,7 +76,7 @@ class AppUI
     #@setSection("options")
     @createLoginFunctions()
     @createAiGeneratorFunctions()
-    @createAiFixErrorFunctions()
+    @createAiFixErrorFunctions?()
 
 
 
@@ -589,6 +589,416 @@ class AppUI
     @loadAiProviders()
     @updateAiProviderAdminVisibility()
     @renderAiDraft null
+
+  createAiFixErrorFunctions:()->
+    @fixErrorState = "idle"
+    @fixErrorProposal = null
+    @fixErrorContext = null
+    @fixErrorLatestError = null
+    @fixErrorConsoleVisible = false
+    @fixErrorRequestToken = 0
+
+    @setAction "fix-error-button",()=> @openFixErrorDialog()
+    @setAction "console-fix-error-button",()=> @openFixErrorDialog()
+    @setAction "fix-error-analyze",()=> @requestFixErrorAnalysis false
+    @setAction "fix-error-regenerate",()=> @requestFixErrorAnalysis true
+    @setAction "fix-error-apply",()=> @applyFixError()
+    @setAction "fix-error-copy",()=> @copyFixErrorPatch()
+    @setAction "fix-error-close",()=> @hideFixErrorDialog()
+    @setAction "fix-error-cancel",()=> @hideFixErrorDialog()
+
+    overlay = @get "fix-error-overlay"
+    if overlay?
+      overlay.addEventListener "mousedown",(event)=>
+        @hideFixErrorDialog() if event.target == overlay
+
+    if @get("fix-error-intent")?
+      @get("fix-error-intent").addEventListener "input",()=> @updateFixErrorButtons()
+    if @get("fix-error-include-nearby")?
+      @get("fix-error-include-nearby").addEventListener "change",()=> @updateFixErrorButtons()
+    if @get("fix-error-prefer-minimal")?
+      @get("fix-error-prefer-minimal").addEventListener "change",()=> @updateFixErrorButtons()
+    @updateFixErrorButtons()
+    @setFixErrorState "idle",""
+
+  clearFixError:()->
+    @fixErrorState = "idle"
+    @fixErrorProposal = null
+    @fixErrorContext = null
+    @fixErrorLatestError = null
+    @fixErrorConsoleVisible = false
+    @fixErrorRequestToken += 1
+    @hide "fix-error-overlay"
+    @renderFixErrorContext null
+    @renderFixErrorProposal null
+    @setFixErrorState "idle",""
+    @setFixErrorConsoleVisible false
+    @updateFixErrorButtons()
+
+  setFixErrorConsoleVisible:(visible)->
+    @fixErrorConsoleVisible = !!visible
+    button = @get "console-fix-error-button"
+    if button?
+      button.style.display = if visible then "inline-flex" else "none"
+    @fixErrorConsoleVisible
+
+  setFixErrorLatestError:(error)->
+    if not error?
+      @fixErrorLatestError = null
+      @setFixErrorConsoleVisible false
+      @updateFixErrorButtons()
+      return
+
+    @fixErrorLatestError = JSON.parse(JSON.stringify(error))
+    @setFixErrorConsoleVisible true
+    @updateFixErrorButtons()
+
+  getFixErrorContext:()->
+    project = @app.project
+    editor = @app.editor?.editor
+    selectedSource = @app.editor?.selected_source
+    filePath = if selectedSource? then "ms/#{selectedSource}.ms" else null
+    currentFileContent = if editor? then editor.getValue() else ""
+    selectedCode = if editor? then editor.getSelectedText() else ""
+    row = 0
+    column = 0
+    if editor? and typeof editor.getCursorPosition == "function"
+      cursor = editor.getCursorPosition()
+      row = cursor.row or 0
+      column = cursor.column or 0
+    lines = String(currentFileContent or "").split /\r?\n/
+    contextRadius = 18
+    beforeCursor = lines.slice(Math.max(0,row-contextRadius),row+1).join "\n"
+    afterCursor = lines.slice(row,Math.min(lines.length,row+contextRadius+1)).join "\n"
+    enabledLibraries = []
+    enabledLibraries.push.apply enabledLibraries, project.libs if Array.isArray(project?.libs)
+    enabledLibraries.push.apply enabledLibraries, project.libraries if Array.isArray(project?.libraries)
+    uniqueLibraries = []
+    for lib in enabledLibraries
+      uniqueLibraries.push lib if typeof lib == "string" and lib.length > 0 and uniqueLibraries.indexOf(lib) < 0
+    {
+      projectId: project?.id or null
+      filePath: filePath
+      language: project?.language or "microscript_v2"
+      enabledLibraries: uniqueLibraries
+      currentFileContent: currentFileContent
+      selectedCode: selectedCode
+      beforeCursor: beforeCursor
+      afterCursor: afterCursor
+      cursor:
+        row: row
+        column: column
+      error: if @fixErrorLatestError? then JSON.parse(JSON.stringify(@fixErrorLatestError)) else null
+    }
+
+  openFixErrorDialog:()->
+    return if not @app.project?
+    @setSection "code",false if @current_section != "code"
+    @fixErrorContext = @getFixErrorContext()
+    @show "fix-error-overlay"
+    @renderFixErrorContext @fixErrorContext
+    @renderFixErrorProposal null
+    @setFixErrorState "collecting",@app.translator.get("Collecting code and error context...")
+    @updateFixErrorButtons()
+    setTimeout (()=> @requestFixErrorAnalysis false),0
+
+  hideFixErrorDialog:()->
+    @fixErrorRequestToken += 1
+    @hide "fix-error-overlay"
+    @updateFixErrorButtons()
+
+  renderFixErrorContext:(context)->
+    path = @get "fix-error-file-path"
+    currentFile = @get "fix-error-current-file"
+    selectedCode = @get "fix-error-selected-code"
+    errorText = @get "fix-error-error"
+    path.value = context?.filePath or "" if path?
+    currentFile.value = context?.currentFileContent or "" if currentFile?
+    selectedCode.value = if context?.selectedCode? and context.selectedCode.length > 0 then context.selectedCode else "" if selectedCode?
+    if errorText?
+      errorText.value = if context?.error? then @formatFixErrorMessage context.error else ""
+    element = @get "fix-error-state-description"
+    if element?
+      if context?.error?.message? and context.error.message.length > 0
+        element.textContent = context.error.message
+      else
+        element.textContent = @app.translator.get "No structured runtime error was captured yet."
+    element = @get "fix-error-language"
+    element.textContent = context?.language or "" if element?
+    element = @get "fix-error-libraries"
+    if element?
+      element.textContent = if context? and Array.isArray(context.enabledLibraries) and context.enabledLibraries.length > 0 then context.enabledLibraries.join(", ") else @app.translator.get("None")
+    @updateFixErrorButtons()
+
+  formatFixErrorMessage:(error)->
+    return "" if not error?
+    lines = []
+    lines.push String(error.message) if error.message? and error.message.length > 0
+    lines.push "File: #{error.file}" if error.file? and error.file.length > 0
+    if error.line?
+      lines.push "Line: #{error.line}#{if error.column? then ", column #{error.column}" else ""}"
+    lines.push "Type: #{error.type}" if error.type? and error.type.length > 0
+    if error.stack? and error.stack.length > 0
+      lines.push ""
+      lines.push error.stack
+    lines.join "\n"
+
+  buildFixErrorRequest:(regenerate=false)->
+    context = @fixErrorContext or @getFixErrorContext()
+    intent = if @get("fix-error-intent")? then @get("fix-error-intent").value.trim() else ""
+    options =
+      includeNearbyFiles: @get("fix-error-include-nearby")?.checked or false
+      preferMinimalPatch: if @get("fix-error-prefer-minimal")? then @get("fix-error-prefer-minimal").checked else true
+      allowMultiFileFix: false
+    proposalId = if regenerate and @fixErrorProposal? then @fixErrorProposal.proposalId else null
+    {
+      projectId: context.projectId
+      filePath: context.filePath
+      language: context.language
+      enabledLibraries: context.enabledLibraries
+      currentFileContent: context.currentFileContent
+      selectedCode: context.selectedCode
+      beforeCursor: context.beforeCursor
+      afterCursor: context.afterCursor
+      error: context.error
+      userIntent: intent
+      options: options
+      proposalId: proposalId
+    }
+
+  requestFixErrorAnalysis:(regenerate=false)->
+    return Promise.resolve(null) if @fixErrorState in ["requesting","applying"]
+    body = @buildFixErrorRequest regenerate
+    @fixErrorContext = body
+    requestToken = ++@fixErrorRequestToken
+    @setFixErrorState "requesting", if regenerate then @app.translator.get("Regenerating fix proposal...") else @app.translator.get("Requesting AI fix proposal...")
+    @updateFixErrorButtons()
+    @requestJson("POST","/api/ai/fix-error",body).then (data)=>
+      return null if requestToken != @fixErrorRequestToken
+      @applyFixErrorProposal data
+    , (err)=>
+      return null if requestToken != @fixErrorRequestToken
+      if err?.status == 409
+        @renderFixErrorProposal null
+        @setFixErrorState "conflict", err?.message or @app.translator.get("This file changed after the proposal was generated.")
+      else if err?.status == 422
+        @setFixErrorState "validation_rejected", err?.message or @app.translator.get("The AI proposal was rejected by validation.")
+      else if err?.status == 429
+        @setFixErrorState "validation_rejected", err?.message or @app.translator.get("Rate limited")
+      else
+        @setFixErrorState "validation_rejected", err?.message or @app.translator.get("Failed to generate a fix proposal.")
+      @updateFixErrorButtons()
+      null
+
+  applyFixErrorProposal:(data)->
+    proposal = data?.fix or null
+    if not proposal?
+      @setFixErrorState "validation_rejected", @app.translator.get("The AI response did not include a proposal.")
+      @renderFixErrorProposal null
+      return null
+
+    @fixErrorProposal =
+      proposalId: data?.proposalId or null
+      provider: data?.provider or null
+      fix: proposal
+
+    @renderFixErrorProposal @fixErrorProposal
+    if proposal.needsMoreContext
+      summary = if Array.isArray(proposal.questions) and proposal.questions.length > 0 then proposal.questions.join(" ") else @app.translator.get("The AI needs more context before it can propose a safe fix.")
+      @setFixErrorState "needs_more_context", summary
+    else
+      firstChange = if Array.isArray(proposal.changes) and proposal.changes.length > 0 then proposal.changes[0] else null
+      if firstChange?
+        diffText = @buildFixErrorPatchText firstChange.path, @fixErrorContext?.currentFileContent or "", firstChange.newContent, proposal
+        @renderFixErrorDiff firstChange.path, @fixErrorContext?.currentFileContent or "", firstChange.newContent, proposal
+        @get("fix-error-patch-text").value = diffText if @get("fix-error-patch-text")?
+      @setFixErrorState "showing_proposal", proposal.summary or @app.translator.get("AI proposal ready")
+
+    if @get("fix-error-status-message")?
+      @get("fix-error-status-message").textContent = if data?.provider? then "#{data.provider.name or "AI"} / #{data.provider.modelId or ""}" else ""
+    @updateFixErrorButtons()
+    data
+
+  renderFixErrorProposal:(record)->
+    container = @get "fix-error-proposal-summary"
+    diffContainer = @get "fix-error-diff"
+    explanation = @get "fix-error-diagnosis"
+    note = @get "fix-error-followup"
+    questions = @get "fix-error-questions"
+    warnings = @get "fix-error-warnings"
+    container.textContent = "" if container?
+    diffContainer.innerHTML = "" if diffContainer?
+    explanation.textContent = "" if explanation?
+    note.textContent = "" if note?
+    questions.innerHTML = "" if questions?
+    warnings.innerHTML = "" if warnings?
+    return if not record?
+
+    proposal = record.fix or {}
+    @get("fix-error-summary").textContent = proposal.summary or "" if @get("fix-error-summary")?
+    explanation.textContent = proposal.diagnosis?.rootCause or "" if explanation?
+    if container?
+      list = []
+      list.push "#{@app.translator.get("Proposal")}: #{record.proposalId or ""}"
+      if record.provider?
+        list.push "#{@app.translator.get("Provider")}: #{record.provider.name or ""}#{if record.provider.modelId? then " / #{record.provider.modelId}" else ""}"
+      if proposal.diagnosis?.errorType?
+        list.push "#{@app.translator.get("Type")}: #{proposal.diagnosis.errorType}"
+      container.textContent = list.filter((entry)-> entry? and entry.length > 0).join("  ")
+    if Array.isArray(proposal.warnings) and proposal.warnings.length > 0 and warnings?
+      for warning in proposal.warnings
+        item = document.createElement "div"
+        item.classList.add "fix-error-warning"
+        item.textContent = warning
+        warnings.appendChild item
+    if proposal.needsMoreContext
+      note.textContent = if Array.isArray(proposal.questions) and proposal.questions.length > 0 then proposal.questions.join(" ") else @app.translator.get("The AI needs more context.") if note?
+      if questions? and Array.isArray(proposal.questions)
+        for question in proposal.questions
+          item = document.createElement "div"
+          item.classList.add "fix-error-question"
+          item.textContent = question
+          questions.appendChild item
+      return
+    if Array.isArray(proposal.changes) and proposal.changes.length > 0
+      change = proposal.changes[0]
+      @renderFixErrorDiff change.path, @fixErrorContext?.currentFileContent or "", change.newContent, proposal if diffContainer?
+      note.textContent = proposal.userExplanation or "" if note?
+    else if note?
+      note.textContent = @app.translator.get "No file change was returned."
+
+  renderFixErrorDiff:(path,before,after,proposal)->
+    container = @get "fix-error-diff"
+    return if not container?
+    container.innerHTML = ""
+    lines = if typeof diff == "function" then diff(before or "", after or "") else []
+    if not Array.isArray(lines) or lines.length == 0
+      text = document.createElement "div"
+      text.classList.add "fix-error-diff-empty"
+      text.textContent = @app.translator.get "No diff available."
+      container.appendChild text
+      return
+    beforeLine = 1
+    afterLine = 1
+    diffLines = document.createElement "div"
+    diffLines.classList.add "fix-error-diff-lines"
+    container.appendChild diffLines
+    for segment in lines when segment? and Array.isArray(segment.data)
+      for line in segment.data
+        row = document.createElement "div"
+        row.classList.add "fix-error-diff-row"
+        row.classList.add "context" if segment.type == "="
+        row.classList.add "removed" if segment.type == "-"
+        row.classList.add "added" if segment.type == "+"
+        row.innerHTML = "<span class='before'></span><span class='after'></span><span class='text'></span>"
+        if segment.type == "="
+          row.childNodes[0].textContent = "#{beforeLine++}"
+          row.childNodes[1].textContent = "#{afterLine++}"
+        else if segment.type == "-"
+          row.childNodes[0].textContent = "#{beforeLine++}"
+        else if segment.type == "+"
+          row.childNodes[1].textContent = "#{afterLine++}"
+        row.childNodes[2].textContent = line
+        diffLines.appendChild row
+    container
+
+  buildFixErrorPatchText:(path,before,after,proposal)->
+    out = []
+    out.push "# #{proposal.summary}" if proposal?.summary? and proposal.summary.length > 0
+    out.push "--- #{path}"
+    out.push "+++ #{path}"
+    diffLines = if typeof diff == "function" then diff(before or "", after or "") else []
+    for segment in diffLines when segment? and Array.isArray(segment.data)
+      for line in segment.data
+        if segment.type == "="
+          out.push " #{line}"
+        else if segment.type == "-"
+          out.push "-#{line}"
+        else if segment.type == "+"
+          out.push "+#{line}"
+    out.join "\n"
+
+  copyFixErrorPatch:()->
+    proposal = @fixErrorProposal
+    return if not proposal? or not proposal.fix? or not Array.isArray(proposal.fix.changes) or proposal.fix.changes.length == 0
+    text = @buildFixErrorPatchText proposal.fix.changes[0].path, @fixErrorContext?.currentFileContent or "", proposal.fix.changes[0].newContent, proposal.fix
+    if navigator.clipboard? and typeof navigator.clipboard.writeText == "function"
+      navigator.clipboard.writeText(text).then => @showNotification @app.translator.get("Patch copied to clipboard")
+    else
+      element = document.createElement "textarea"
+      element.value = text
+      element.style.position = "fixed"
+      element.style.left = "-1000px"
+      element.style.top = "-1000px"
+      document.body.appendChild element
+      element.select()
+      document.execCommand "copy"
+      document.body.removeChild element
+      @showNotification @app.translator.get("Patch copied to clipboard")
+
+  applyFixError:()->
+    proposal = @fixErrorProposal
+    return Promise.resolve(null) if not proposal? or not proposal.fix? or proposal.proposalId == null
+    if proposal.fix.needsMoreContext
+      @setFixErrorState "needs_more_context", @app.translator.get("More context is required before applying this fix.")
+      return Promise.resolve null
+    if not Array.isArray(proposal.fix.changes) or proposal.fix.changes.length == 0
+      @setFixErrorState "validation_rejected", @app.translator.get("The proposal has no changes to apply.")
+      return Promise.resolve null
+    body =
+      fixProposalId: proposal.proposalId
+      acceptedChanges: proposal.fix.changes
+    requestToken = ++@fixErrorRequestToken
+    @setFixErrorState "applying", @app.translator.get("Applying approved change...")
+    @updateFixErrorButtons()
+    @requestJson("POST","/api/ai/fix-error/apply",body).then (data)=>
+      return null if requestToken != @fixErrorRequestToken
+      @setFixErrorState "success", @app.translator.get("Fix applied successfully.")
+      @updateFixErrorButtons()
+      @showNotification @app.translator.get("AI fix applied")
+      setTimeout (()=> @hideFixErrorDialog() if @fixErrorState == "success"),1200
+    , (err)=>
+      return null if requestToken != @fixErrorRequestToken
+      if err?.status == 409
+        @setFixErrorState "conflict", err?.message or @app.translator.get("The file changed before the proposal could be applied.")
+      else if err?.status == 422
+        @setFixErrorState "validation_rejected", err?.message or @app.translator.get("The proposal was rejected by validation.")
+      else
+        @setFixErrorState "validation_rejected", err?.message or @app.translator.get("Failed to apply the fix.")
+      @updateFixErrorButtons()
+      null
+
+  setFixErrorState:(state,message="")->
+    @fixErrorState = state
+    @fixErrorStateMessage = message or ""
+    element = @get "fix-error-state"
+    if element?
+      element.textContent = @app.translator.get({
+        idle: "Idle"
+        collecting: "Collecting"
+        requesting: "Requesting"
+        showing_proposal: "Proposal ready"
+        needs_more_context: "Needs more context"
+        validation_rejected: "Validation rejected"
+        conflict: "Conflict"
+        applying: "Applying"
+        success: "Success"
+      }[state] or state.replace /_/g," ")
+    @get("fix-error-status").textContent = message or "" if @get("fix-error-status")?
+    @updateFixErrorButtons()
+
+  updateFixErrorButtons:()->
+    hasProposal = @fixErrorProposal? and @fixErrorProposal.fix?
+    isBusy = @fixErrorState in ["collecting","requesting","applying"]
+    canApply = hasProposal and not isBusy and not (@fixErrorProposal.fix?.needsMoreContext == true) and Array.isArray(@fixErrorProposal.fix.changes) and @fixErrorProposal.fix.changes.length > 0 and @fixErrorState != "validation_rejected" and @fixErrorState != "conflict"
+    @get("fix-error-analyze").disabled = isBusy if @get("fix-error-analyze")?
+    @get("fix-error-regenerate").disabled = not (hasProposal and not isBusy) if @get("fix-error-regenerate")?
+    @get("fix-error-apply").disabled = not canApply if @get("fix-error-apply")?
+    @get("fix-error-copy").disabled = not (hasProposal and not isBusy) if @get("fix-error-copy")?
+    @get("fix-error-intent").disabled = isBusy if @get("fix-error-intent")?
+    @get("fix-error-include-nearby").disabled = isBusy if @get("fix-error-include-nearby")?
+    @get("fix-error-prefer-minimal").disabled = isBusy if @get("fix-error-prefer-minimal")?
+    @fixErrorState
 
   clearAiDraft:()->
     @aiDraft = null

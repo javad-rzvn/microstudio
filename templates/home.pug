@@ -14,7 +14,7 @@ html(lang=language, dir=language == "fa" ? "rtl" : "ltr")
     title #{title}
 
     each css in css_files
-      link(rel="stylesheet" type="text/css" href=css)
+      link(rel="stylesheet" type="text/css" href=css + (css.indexOf('?') >= 0 ? '&' : '?') + 'v=' + Date.now())
 
     link(rel="stylesheet" href="/lib/fontlib/fontawesome/css/all.css")
 
@@ -89,7 +89,7 @@ html(lang=language, dir=language == "fa" ? "rtl" : "ltr")
         window.ms_tutorials_root_url = "!{tutorials_root_url}" ;
 
     each js in javascript_files
-      script(src=js)
+      script(src=js + (js.indexOf('?') >= 0 ? '&' : '?') + 'v=' + Date.now())
 
   body.notranslate(translate="no")
     noscript

@@ -104,6 +104,7 @@ class @WebApp
           name: project.title
           javascript_files: @concatenator.getHomeJSFiles()
           css_files: @concatenator.getHomeCSSFiles()
+          asset_version: Date.now()
           translator: translator
           language: lang
           realm: @server.config.realm or "local"
@@ -131,6 +132,7 @@ class @WebApp
           name: "microStudio"
           javascript_files: @concatenator.getHomeJSFiles()
           css_files: @concatenator.getHomeCSSFiles()
+          asset_version: Date.now()
           translator: translator
           language: lang
           realm: @server.config.realm or "local"
