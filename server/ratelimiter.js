@@ -15,6 +15,14 @@ this.RateLimiter = class RateLimiter {
     this.map.create_project_user = new RateLimiterClass(this, 60, 10); // max 10 projects per hour
     this.map.import_project_user = new RateLimiterClass(this, 60, 10); // max 10 projects per hour
     this.map.file_upload_user = new RateLimiterClass(this, 10, 10); // max 10 large file uploads per ten minutes
+    // AI generation buckets are intentionally low-rate but must exist or the
+    // endpoints fail closed with "rate limited" on every request.
+    this.map.ai_generate_ip = new RateLimiterClass(this, 10, 10);
+    this.map.ai_generate_user = new RateLimiterClass(this, 10, 10);
+    this.map.ai_explain_ip = new RateLimiterClass(this, 10, 20);
+    this.map.ai_explain_user = new RateLimiterClass(this, 10, 20);
+    this.map.ai_apply_ip = new RateLimiterClass(this, 10, 10);
+    this.map.ai_apply_user = new RateLimiterClass(this, 10, 10);
     this.map.create_file_user = new RateLimiterClass(this, 5, 40); // max 40 new files per 5 minutes
     //@map.change_file_user = new RateLimiterClass(@,10,200)
     this.map.post_comment_user = new RateLimiterClass(this, 10, 10); // max 10 new comments per 10 minutes

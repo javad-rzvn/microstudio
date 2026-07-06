@@ -19,6 +19,15 @@ class @RateLimiter
     @map.import_project_user = new RateLimiterClass(@,60,10) # max 10 projects per hour
     @map.file_upload_user = new RateLimiterClass(@,10,10) # max 10 large file uploads per ten minutes
 
+    # AI generation buckets are intentionally low-rate but must exist or the
+    # endpoints fail closed with "rate limited" on every request.
+    @map.ai_generate_ip = new RateLimiterClass(@,10,10)
+    @map.ai_generate_user = new RateLimiterClass(@,10,10)
+    @map.ai_explain_ip = new RateLimiterClass(@,10,20)
+    @map.ai_explain_user = new RateLimiterClass(@,10,20)
+    @map.ai_apply_ip = new RateLimiterClass(@,10,10)
+    @map.ai_apply_user = new RateLimiterClass(@,10,10)
+
     @map.create_file_user = new RateLimiterClass(@,5,40) # max 40 new files per 5 minutes
     #@map.change_file_user = new RateLimiterClass(@,10,200)
 
