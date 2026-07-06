@@ -734,6 +734,7 @@ class AppUI
     @get("ai-provider-purpose").value = if provider? then provider.purpose or "text" else "text"
     @get("ai-provider-base-url").value = if provider? then provider.baseUrl or "" else ""
     @get("ai-provider-model-id").value = if provider? then provider.modelId or "" else ""
+    @get("ai-provider-system-prompt").value = if provider? then provider.systemPrompt or "" else ""
     @get("ai-provider-api-key").value = ""
     @get("ai-provider-temperature").value = if provider? and provider.temperature? then "#{provider.temperature}" else "0.3"
     @get("ai-provider-max-tokens").value = if provider? and provider.maxTokens? then "#{provider.maxTokens}" else "4000"
@@ -758,6 +759,7 @@ class AppUI
       purpose: @get("ai-provider-purpose").value
       baseUrl: @get("ai-provider-base-url").value.trim()
       modelId: @get("ai-provider-model-id").value.trim()
+      systemPrompt: @get("ai-provider-system-prompt").value
       temperature: parseFloat(@get("ai-provider-temperature").value or "0.3")
       maxTokens: parseInt(@get("ai-provider-max-tokens").value or "4000",10)
       timeoutMs: parseInt(@get("ai-provider-timeout-ms").value or "60000",10)
@@ -781,11 +783,12 @@ class AppUI
       row.classList.add "selected" if "#{provider.id}" == "#{selectedId}"
       meta = document.createElement "div"
       meta.classList.add "ai-provider-row-meta"
-      meta.innerHTML = "<strong></strong><span></span><span></span><span></span>"
+      meta.innerHTML = "<strong></strong><span></span><span></span><span></span><span></span>"
       meta.childNodes[0].textContent = "#{provider.name}#{if provider.isDefault then " (default)" else ""}"
       meta.childNodes[1].textContent = "#{provider.type} / #{provider.purpose} / #{provider.modelId or ""}"
       meta.childNodes[2].textContent = provider.baseUrl or ""
       meta.childNodes[3].textContent = if provider.enabled == false then "disabled" else if provider.hasApiKey then "key stored" else "no key"
+      meta.childNodes[4].textContent = if provider.hasSystemPrompt then "custom system prompt" else "default prompt"
       actions = document.createElement "div"
       actions.classList.add "ai-provider-row-actions"
       for action in [

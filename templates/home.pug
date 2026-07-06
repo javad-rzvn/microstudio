@@ -598,6 +598,9 @@ html(lang=language, dir=language == "fa" ? "rtl" : "ltr")
                             label(for="ai-provider-model-id") #{translator.get("Model ID")}
                             input#ai-provider-model-id.input1(type="text" placeholder="gpt-4.1-mini")
                           div
+                            label(for="ai-provider-system-prompt") #{translator.get("System prompt")}
+                            textarea#ai-provider-system-prompt.input1(rows="5" placeholder="Optional system prompt used before each text generation request")
+                          div
                             label(for="ai-provider-api-key") #{translator.get("API key")}
                             input#ai-provider-api-key.input1(type="password" placeholder="leave blank to keep current key")
                           div

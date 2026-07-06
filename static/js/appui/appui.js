@@ -536,7 +536,7 @@ AppUI = class AppUI {
   }
 
   createAiGeneratorFunctions() {
-    var assetGallery, fileTree, i, len, path, ref;
+    var adminList, assetGallery, fileTree, i, len, path, ref;
     this.aiDraft = null;
     this.aiDraftByPath = {};
     this.aiDraftPreviewByPath = {};
@@ -544,6 +544,9 @@ AppUI = class AppUI {
     this.aiSelectedPath = null;
     this.aiBusy = false;
     this.aiProviderProfiles = [];
+    this.aiAdminProviders = [];
+    this.aiProviderAdminOpen = false;
+    this.aiProviderDraftId = null;
     this.setAction("ai-generator-generate", () => {
       return this.generateAiDraft();
     });
@@ -564,6 +567,21 @@ AppUI = class AppUI {
     });
     this.setAction("ai-generator-cancel", () => {
       return this.setSection("code", true);
+    });
+    this.setAction("ai-provider-admin-button", () => {
+      return this.toggleAiProviderAdminPanel();
+    });
+    this.setAction("ai-provider-admin-refresh", () => {
+      return this.loadAiAdminProviders();
+    });
+    this.setAction("ai-provider-save", () => {
+      return this.saveAiProvider();
+    });
+    this.setAction("ai-provider-new", () => {
+      return this.showAiProviderEditor(null);
+    });
+    this.setAction("ai-provider-cancel", () => {
+      return this.showAiProviderEditor(null);
     });
     fileTree = this.get("ai-generator-file-tree");
     fileTree.addEventListener("click", (event) => {
@@ -597,6 +615,30 @@ AppUI = class AppUI {
         return this.selectAiDraftAsset(assetId);
       }
     });
+    adminList = this.get("ai-provider-admin-list");
+    if (adminList != null) {
+      adminList.addEventListener("click", (event) => {
+        var providerId, target;
+        target = event.target;
+        while (target != null && target !== adminList && !((target.dataset != null) && target.dataset.action)) {
+          target = target.parentNode;
+        }
+        if (!(target != null) || !((target.dataset != null) && target.dataset.action)) {
+          return;
+        }
+        providerId = target.dataset.providerId;
+        switch (target.dataset.action) {
+          case "edit-provider":
+            return this.showAiProviderEditor(this.findAiProviderAdminProfile(providerId));
+          case "test-provider":
+            return this.testAiProvider(providerId);
+          case "delete-provider":
+            return this.deleteAiProvider(providerId);
+          case "set-default-provider":
+            return this.setDefaultAiProvider(providerId);
+        }
+      });
+    }
     this.get("ai-generator-target-mode").addEventListener("change", () => {
       return this.updateAiGeneratorButtons();
     });
@@ -735,6 +777,41 @@ AppUI = class AppUI {
       select.innerHTML = "";
       select.appendChild(new Option("Use server default", ""));
       return [];
+    });
+  }
+
+  requestJson(method, url, payload = null) {
+    var options;
+    options = {
+      method: method,
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json"
+      }
+    };
+    if (payload != null) {
+      options.body = JSON.stringify(payload);
+    }
+    return fetch(url, options).then((response) => {
+      return response.text().then((text) => {
+        var data, err;
+        data = null;
+        if (text != null && text.length > 0) {
+          try {
+            data = JSON.parse(text);
+          } catch (error) {
+            data = {
+              error: text
+            };
+          }
+        }
+        if (!response.ok) {
+          err = new Error((data != null ? data.error : void 0) || response.statusText || "Request failed");
+          err.response = data;
+          throw err;
+        }
+        return data;
+      });
     });
   }
 
@@ -1834,6 +1911,234 @@ AppUI = class AppUI {
     isLocalMode = (window.ms_realm != null) && window.ms_realm !== "production";
     note.textContent = "Keys are stored in plaintext in local mode.";
     return note.classList.toggle("hidden", !isLocalMode);
+  }
+
+  toggleAiProviderAdminPanel() {
+    if (!((this.app.user != null) && (this.app.user.flags != null) && this.app.user.flags.admin)) {
+      return;
+    }
+    this.aiProviderAdminOpen = !this.aiProviderAdminOpen;
+    this.updateAiProviderAdminVisibility();
+    if (this.aiProviderAdminOpen) {
+      return this.loadAiAdminProviders(this.aiProviderDraftId);
+    }
+  }
+
+  setAiProviderAdminStatus(text, isError = false) {
+    var element;
+    element = this.get("ai-provider-admin-status");
+    if (element == null) {
+      return;
+    }
+    element.textContent = text || "";
+    return element.style.color = isError ? "#fecaca" : "rgba(191,219,254,.95)";
+  }
+
+  findAiProviderAdminProfile(providerId) {
+    var i, len, provider, ref;
+    ref = this.aiAdminProviders || [];
+    for (i = 0, len = ref.length; i < len; i++) {
+      provider = ref[i];
+      if (`${provider.id}` === `${providerId}`) {
+        return provider;
+      }
+    }
+    return null;
+  }
+
+  showAiProviderEditor(provider) {
+    this.aiProviderDraftId = provider != null ? `${provider.id}` : null;
+    this.get("ai-provider-name").value = provider != null ? provider.name || "" : "";
+    this.get("ai-provider-type").value = provider != null ? provider.type || "openai-compatible" : "openai-compatible";
+    this.get("ai-provider-purpose").value = provider != null ? provider.purpose || "text" : "text";
+    this.get("ai-provider-base-url").value = provider != null ? provider.baseUrl || "" : "";
+    this.get("ai-provider-model-id").value = provider != null ? provider.modelId || "" : "";
+    this.get("ai-provider-system-prompt").value = provider != null ? provider.systemPrompt || "" : "";
+    this.get("ai-provider-api-key").value = "";
+    this.get("ai-provider-temperature").value = (provider != null) && (provider.temperature != null) ? `${provider.temperature}` : "0.3";
+    this.get("ai-provider-max-tokens").value = (provider != null) && (provider.maxTokens != null) ? `${provider.maxTokens}` : "4000";
+    this.get("ai-provider-timeout-ms").value = (provider != null) && (provider.timeoutMs != null) ? `${provider.timeoutMs}` : "60000";
+    this.get("ai-provider-enabled").checked = provider != null ? provider.enabled !== false : true;
+    this.get("ai-provider-default").checked = provider != null ? provider.isDefault === true : false;
+    this.setAiProviderAdminStatus(provider != null ? `Editing provider ${provider.id}` : "Creating new provider");
+    this.renderAiProviderAdminList(this.aiAdminProviders || []);
+    return this.updateAiProviderAdminNote();
+  }
+
+  collectAiProviderPayload() {
+    var apiKey, payload;
+    payload = {
+      name: this.get("ai-provider-name").value.trim(),
+      type: this.get("ai-provider-type").value,
+      purpose: this.get("ai-provider-purpose").value,
+      baseUrl: this.get("ai-provider-base-url").value.trim(),
+      modelId: this.get("ai-provider-model-id").value.trim(),
+      systemPrompt: this.get("ai-provider-system-prompt").value,
+      temperature: parseFloat(this.get("ai-provider-temperature").value || "0.3"),
+      maxTokens: parseInt(this.get("ai-provider-max-tokens").value || "4000", 10),
+      timeoutMs: parseInt(this.get("ai-provider-timeout-ms").value || "60000", 10),
+      enabled: this.get("ai-provider-enabled").checked,
+      isDefault: this.get("ai-provider-default").checked
+    };
+    apiKey = this.get("ai-provider-api-key").value.trim();
+    if (apiKey.length > 0) {
+      payload.apiKey = apiKey;
+    } else if (this.aiProviderDraftId == null) {
+      payload.apiKey = "";
+    }
+    return payload;
+  }
+
+  renderAiProviderAdminList(providers) {
+    var action, actions, button, container, i, len, meta, provider, ref, row, selectedId;
+    container = this.get("ai-provider-admin-list");
+    if (container == null) {
+      return;
+    }
+    container.innerHTML = "";
+    selectedId = this.aiProviderDraftId;
+    ref = providers || [];
+    for (i = 0, len = ref.length; i < len; i++) {
+      provider = ref[i];
+      row = document.createElement("div");
+      row.classList.add("ai-provider-row");
+      if (`${provider.id}` === `${selectedId}`) {
+        row.classList.add("selected");
+      }
+      meta = document.createElement("div");
+      meta.classList.add("ai-provider-row-meta");
+      meta.innerHTML = "<strong></strong><span></span><span></span><span></span><span></span>";
+      meta.childNodes[0].textContent = `${provider.name}${provider.isDefault ? " (default)" : ""}`;
+      meta.childNodes[1].textContent = `${provider.type} / ${provider.purpose} / ${provider.modelId || ""}`;
+      meta.childNodes[2].textContent = provider.baseUrl || "";
+      meta.childNodes[3].textContent = provider.enabled === false ? "disabled" : provider.hasApiKey ? "key stored" : "no key";
+      meta.childNodes[4].textContent = provider.hasSystemPrompt ? "custom system prompt" : "default prompt";
+      actions = document.createElement("div");
+      actions.classList.add("ai-provider-row-actions");
+      for (action of [["Edit", "edit-provider"], ["Test", "test-provider"], ["Default", "set-default-provider"], ["Delete", "delete-provider"]]) {
+        button = document.createElement("button");
+        button.textContent = action[0];
+        button.dataset.action = action[1];
+        button.dataset.providerId = `${provider.id}`;
+        actions.appendChild(button);
+      }
+      row.appendChild(meta);
+      row.appendChild(actions);
+      container.appendChild(row);
+    }
+  }
+
+  loadAiAdminProviders(selectedId = null) {
+    if (!((this.app.user != null) && (this.app.user.flags != null) && this.app.user.flags.admin)) {
+      return Promise.resolve([]);
+    }
+    this.setAiProviderAdminStatus("Loading provider profiles...");
+    return this.requestJson("GET", "/api/admin/ai/providers?purpose=text").then((data) => {
+      var chosen, providers;
+      providers = Array.isArray(data != null ? data.providers : void 0) ? data.providers : [];
+      this.aiAdminProviders = providers;
+      this.renderAiProviderAdminList(providers);
+      chosen = null;
+      if (selectedId != null) {
+        chosen = this.findAiProviderAdminProfile(selectedId);
+      } else if (this.aiProviderDraftId != null) {
+        chosen = this.findAiProviderAdminProfile(this.aiProviderDraftId);
+      } else if (providers.length > 0) {
+        chosen = providers[0];
+      }
+      if (chosen != null) {
+        this.showAiProviderEditor(chosen);
+      }
+      this.setAiProviderAdminStatus(`Loaded ${providers.length} provider profiles.`);
+      return providers;
+    }, (err) => {
+      this.aiAdminProviders = [];
+      this.renderAiProviderAdminList([]);
+      this.setAiProviderAdminStatus((err != null ? err.message : void 0) || "Failed to load provider profiles", true);
+      return [];
+    });
+  }
+
+  saveAiProvider() {
+    var method, payload, url;
+    if (!((this.app.user != null) && (this.app.user.flags != null) && this.app.user.flags.admin)) {
+      return;
+    }
+    payload = this.collectAiProviderPayload();
+    if (!payload.name.length || !payload.baseUrl.length || !payload.modelId.length) {
+      this.setAiProviderAdminStatus("Name, base URL, and model ID are required.", true);
+      return;
+    }
+    if (this.aiProviderDraftId != null) {
+      url = `/api/admin/ai/providers/${this.aiProviderDraftId}`;
+      method = "PATCH";
+    } else {
+      url = "/api/admin/ai/providers";
+      method = "POST";
+    }
+    this.setAiProviderAdminStatus("Saving provider...");
+    return this.requestJson(method, url, payload).then((data) => {
+      var provider, selected;
+      provider = (data != null ? data.provider : void 0) || null;
+      this.setAiProviderAdminStatus("Provider saved.");
+      selected = provider != null ? provider.id : this.aiProviderDraftId;
+      this.loadAiAdminProviders(selected);
+      this.loadAiProviders(selected);
+      if (provider != null) {
+        return this.showAiProviderEditor(provider);
+      }
+    }, (err) => {
+      return this.setAiProviderAdminStatus((err != null ? err.message : void 0) || "Failed to save provider", true);
+    });
+  }
+
+  deleteAiProvider(providerId) {
+    if (providerId == null) {
+      return;
+    }
+    if (!confirm("Delete this provider profile?")) {
+      return;
+    }
+    this.setAiProviderAdminStatus("Deleting provider...");
+    return this.requestJson("DELETE", `/api/admin/ai/providers/${providerId}`).then((data) => {
+      var wasSelected;
+      this.setAiProviderAdminStatus("Provider deleted.");
+      wasSelected = `${this.aiProviderDraftId}` === `${providerId}`;
+      if (wasSelected) {
+        this.aiProviderDraftId = null;
+        this.showAiProviderEditor(null);
+      }
+      this.loadAiAdminProviders();
+      return this.loadAiProviders();
+    }, (err) => {
+      return this.setAiProviderAdminStatus((err != null ? err.message : void 0) || "Failed to delete provider", true);
+    });
+  }
+
+  testAiProvider(providerId) {
+    if (providerId == null) {
+      return;
+    }
+    this.setAiProviderAdminStatus("Testing provider...");
+    return this.requestJson("POST", `/api/admin/ai/providers/${providerId}/test`, {}).then((data) => {
+      return this.setAiProviderAdminStatus(`Test ok: ${data.providerName || data.providerId}`);
+    }, (err) => {
+      return this.setAiProviderAdminStatus((err != null ? err.message : void 0) || "Provider test failed", true);
+    });
+  }
+
+  setDefaultAiProvider(providerId) {
+    if (providerId == null) {
+      return;
+    }
+    this.setAiProviderAdminStatus("Setting default provider...");
+    return this.requestJson("POST", `/api/admin/ai/providers/${providerId}/set-default`, {}).then((data) => {
+      this.setAiProviderAdminStatus("Default provider updated.");
+      this.loadAiAdminProviders(providerId);
+      return this.loadAiProviders(providerId);
+    }, (err) => {
+      return this.setAiProviderAdminStatus((err != null ? err.message : void 0) || "Failed to set default provider", true);
+    });
   }
 
   updateProjectTitle() {

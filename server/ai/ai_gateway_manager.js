@@ -69,25 +69,36 @@ class AiGatewayManager {
     };
   }
 
+  toAdminDto(profile) {
+    const runtime = profile && profile.systemPrompt != null ? profile : (profile && profile.id != null ? this.store.getRuntimeById(profile.id) || profile : profile);
+    const dto = this.toPublicDto(runtime);
+    if (!dto) {
+      return null;
+    }
+    dto.systemPrompt = runtime && runtime.systemPrompt ? runtime.systemPrompt : "";
+    return dto;
+  }
+
   listPublicProviders(purpose = "text") {
     return this.store.listPublic(purpose).map((profile) => this.toPublicDto(profile));
   }
 
   listAdminProviders(purpose = null) {
-    return this.store.list(purpose).map((profile) => this.toPublicDto(profile));
+    return this.store.list(purpose).map((profile) => this.toAdminDto(profile));
   }
 
   getProvider(id) {
-    return this.store.getById(id);
+    const profile = this.store.getRuntimeById(id);
+    return profile ? this.toAdminDto(profile) : null;
   }
 
   createProvider(input) {
-    return this.toPublicDto(this.store.create(input));
+    return this.toAdminDto(this.store.create(input));
   }
 
   updateProvider(id, input) {
     const result = this.store.update(id, input);
-    return result ? this.toPublicDto(result) : null;
+    return result ? this.toAdminDto(result) : null;
   }
 
   deleteProvider(id) {
@@ -96,7 +107,7 @@ class AiGatewayManager {
 
   setDefaultProvider(id) {
     const result = this.store.setDefault(id);
-    return result ? this.toPublicDto(result) : null;
+    return result ? this.toAdminDto(result) : null;
   }
 
   resolveProviderProfile(input = {}, purpose = "text") {
@@ -230,13 +241,17 @@ class AiGatewayManager {
     const provider = this.resolveProviderProfile(input, purpose);
     const startedAt = now();
     try {
+      const systemMessages = provider.systemPrompt && String(provider.systemPrompt).trim().length > 0
+        ? [{ role: "system", content: provider.systemPrompt }]
+        : [];
+      const messages = [...systemMessages, ...(Array.isArray(input.messages) ? input.messages : [])];
       const result = await createChatCompletion({
         baseUrl: provider.baseUrl,
         apiKey: provider.apiKey,
         modelId: provider.modelId,
         timeoutMs: provider.timeoutMs
       }, {
-        messages: input.messages,
+        messages,
         temperature: input.temperature,
         maxTokens: input.maxTokens,
         responseFormat: input.responseFormat
@@ -282,6 +297,9 @@ class AiGatewayManager {
       throw safeError("Provider not found");
     }
     const startedAt = now();
+    const systemMessages = provider.systemPrompt && String(provider.systemPrompt).trim().length > 0
+      ? [{ role: "system", content: provider.systemPrompt }]
+      : [];
     const result = await createChatCompletion({
       baseUrl: provider.baseUrl,
       apiKey: provider.apiKey,
@@ -289,6 +307,7 @@ class AiGatewayManager {
       timeoutMs: provider.timeoutMs
     }, {
       messages: [
+        ...systemMessages,
         {
           role: "user",
           content: "Reply with exactly: ok"

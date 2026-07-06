@@ -37,6 +37,13 @@ function normalizeWorkflow(value) {
   }
 }
 
+function normalizeSystemPrompt(value) {
+  if (value == null || value === "") {
+    return "";
+  }
+  return String(value).trim().slice(0, 8000);
+}
+
 function normalizeProfileId(value) {
   if (value == null || value === "") {
     return null;
@@ -89,6 +96,7 @@ class AiProviderStore {
       enabled: input.enabled != null ? !!input.enabled : existing.enabled !== false,
       isDefault: input.isDefault != null ? !!input.isDefault : existing.isDefault === true,
       workflow: Object.prototype.hasOwnProperty.call(input, "workflow") ? normalizeWorkflow(input.workflow) : normalizeWorkflow(existing.workflow),
+      systemPrompt: Object.prototype.hasOwnProperty.call(input, "systemPrompt") ? normalizeSystemPrompt(input.systemPrompt) : normalizeSystemPrompt(existing.systemPrompt),
       clientId: typeof input.clientId === "string" ? input.clientId.trim().slice(0, 120) : (existing.clientId || ""),
       updatedAt: nowIso()
     };
@@ -129,6 +137,7 @@ class AiProviderStore {
       isDefault: profile.isDefault === true,
       hasApiKey: !!profile.apiKeyEncrypted,
       hasWorkflow: !!profile.workflow,
+      hasSystemPrompt: !!profile.systemPrompt,
       createdAt: profile.createdAt || null,
       updatedAt: profile.updatedAt || null
     };
@@ -138,6 +147,7 @@ class AiProviderStore {
     const profile = this.toPublicProfile(data, id);
     profile.apiKey = data && data.apiKeyEncrypted ? this.getCrypto().decrypt(data.apiKeyEncrypted) : "";
     profile.workflow = data && data.workflow ? data.workflow : "";
+    profile.systemPrompt = data && data.systemPrompt ? data.systemPrompt : "";
     profile.clientId = data && data.clientId ? data.clientId : "";
     return profile;
   }
