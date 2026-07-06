@@ -890,7 +890,8 @@ AppUI = class AppUI {
       meta.childNodes[2].textContent = asset.prompt || "";
       actions = document.createElement("div");
       actions.classList.add("ai-asset-actions");
-      ref1 = [["Regenerate this asset", "regenerate-asset"], ["Edit prompt", "edit-asset-prompt"], [(asset.accepted ? "Accepted" : "Accept asset"), "accept-asset"], ["Replace asset", "replace-asset"]];
+      acceptLabel = asset.accepted ? "Accepted" : "Accept asset";
+      ref1 = [["Regenerate this asset", "regenerate-asset"], ["Edit prompt", "edit-asset-prompt"], [acceptLabel, "accept-asset"], ["Replace asset", "replace-asset"]];
       for (j = 0, len1 = ref1.length; j < len1; j++) {
         action = ref1[j];
         title = action[0];

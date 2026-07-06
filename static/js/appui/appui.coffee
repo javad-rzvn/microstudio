@@ -663,7 +663,7 @@ class AppUI
       @aiProviderProfiles = []
       select.innerHTML = ""
       select.appendChild new Option "Use server default",""
-      []
+      return []
 
   requestJson:(method,url,payload=null)->
     options =
@@ -812,7 +812,8 @@ class AppUI
       @aiAdminProviders = []
       @renderAiProviderAdminList []
       @setAiProviderAdminStatus err.message or "Failed to load provider profiles",true
-      []
+      return []
+    )
 
   saveAiProvider:()->
     return if not (@app.user? and @app.user.flags? and @app.user.flags.admin)
@@ -999,10 +1000,11 @@ class AppUI
       meta.childNodes[2].textContent = asset.prompt or ""
       actions = document.createElement "div"
       actions.classList.add "ai-asset-actions"
+      acceptLabel = if asset.accepted then "Accepted" else "Accept asset"
       for action in [
         ["Regenerate this asset","regenerate-asset"]
         ["Edit prompt","edit-asset-prompt"]
-        [(if asset.accepted then "Accepted" else "Accept asset"),"accept-asset"]
+        [acceptLabel,"accept-asset"]
         ["Replace asset","replace-asset"]
       ]
         button = document.createElement "button"
