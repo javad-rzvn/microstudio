@@ -654,7 +654,7 @@ html(lang=language, dir=language == "fa" ? "rtl" : "ltr")
           div.fix-error-column
             div.fix-error-card
               h3 #{translator.get("Error")}
-              textarea#fix-error-error(readonly rows="8" spellcheck="false")
+              textarea#fix-error-error(rows="8" spellcheck="false" placeholder=translator.get("Paste or type the error text here"))
             div.fix-error-card
               h3 #{translator.get("Current file")}
               textarea#fix-error-current-file(readonly rows="14" spellcheck="false")

@@ -698,9 +698,9 @@ class AppUI
     @show "fix-error-overlay"
     @renderFixErrorContext @fixErrorContext
     @renderFixErrorProposal null
-    @setFixErrorState "collecting",@app.translator.get("Collecting code and error context...")
+    hasStructuredError = @fixErrorContext?.error? and ((@fixErrorContext.error.message? and @fixErrorContext.error.message.length > 0) or (@fixErrorContext.error.stack? and @fixErrorContext.error.stack.length > 0))
+    @setFixErrorState "idle", if hasStructuredError then @app.translator.get("Review the error text and click Analyze & Fix.") else @app.translator.get("Paste or type the error text, then click Analyze & Fix.")
     @updateFixErrorButtons()
-    setTimeout (()=> @requestFixErrorAnalysis false),0
 
   hideFixErrorDialog:()->
     @fixErrorRequestToken += 1
@@ -746,6 +746,7 @@ class AppUI
   buildFixErrorRequest:(regenerate=false)->
     context = @fixErrorContext or @getFixErrorContext()
     intent = if @get("fix-error-intent")? then @get("fix-error-intent").value.trim() else ""
+    errorText = if @get("fix-error-error")? then @get("fix-error-error").value.trim() else ""
     options =
       includeNearbyFiles: @get("fix-error-include-nearby")?.checked or false
       preferMinimalPatch: if @get("fix-error-prefer-minimal")? then @get("fix-error-prefer-minimal").checked else true
@@ -761,6 +762,7 @@ class AppUI
       beforeCursor: context.beforeCursor
       afterCursor: context.afterCursor
       error: context.error
+      errorText: errorText
       userIntent: intent
       options: options
       proposalId: proposalId

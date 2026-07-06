@@ -289,16 +289,17 @@ class FixErrorService {
       : typeof input.afterCursor === "string"
         ? input.afterCursor
         : "";
+    const manualErrorText = typeof input.errorText === "string" ? trimString(input.errorText, 4000) : "";
 
     const error = input.error && typeof input.error === "object" ? {
-      message: trimString(input.error.message, 4000),
+      message: manualErrorText || trimString(input.error.message, 4000),
       stack: trimString(input.error.stack, 8000),
       line: isPositiveInteger(Number(input.error.line)) ? Number(input.error.line) : null,
       column: isPositiveInteger(Number(input.error.column)) ? Number(input.error.column) : null,
       source: ["runtime", "syntax", "console", "user"].includes(String(input.error.source || "")) ? String(input.error.source) : "user",
       file: this.normalizePath(input.error.file) || normalizedPath
     } : {
-      message: "",
+      message: manualErrorText,
       stack: "",
       line: null,
       column: null,

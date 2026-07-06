@@ -408,11 +408,9 @@ AppUI = class AppUI {
     this.show("fix-error-overlay");
     this.renderFixErrorContext(context);
     this.renderFixErrorProposal(null);
-    this.setFixErrorState("collecting", this.app.translator.get("Collecting code and error context..."));
-    this.updateFixErrorButtons();
-    return setTimeout((() => {
-      return this.requestFixErrorAnalysis(false);
-    }), 0);
+    hasStructuredError = (context != null ? context.error : void 0) != null && (((context.error.message != null ? context.error.message.length : void 0) > 0) || ((context.error.stack != null ? context.error.stack.length : void 0) > 0));
+    this.setFixErrorState("idle", hasStructuredError ? this.app.translator.get("Review the error text and click Analyze & Fix.") : this.app.translator.get("Paste or type the error text, then click Analyze & Fix."));
+    return this.updateFixErrorButtons();
   }
 
   hideFixErrorDialog() {
@@ -484,9 +482,10 @@ AppUI = class AppUI {
   }
 
   buildFixErrorRequest(regenerate = false) {
-    var context, intent, options, proposalId;
+    var context, errorText, intent, options, proposalId;
     context = this.fixErrorContext || this.getFixErrorContext();
     intent = this.get("fix-error-intent") != null ? this.get("fix-error-intent").value.trim() : "";
+    errorText = this.get("fix-error-error") != null ? this.get("fix-error-error").value.trim() : "";
     options = {
       includeNearbyFiles: this.get("fix-error-include-nearby") != null ? this.get("fix-error-include-nearby").checked : false,
       preferMinimalPatch: this.get("fix-error-prefer-minimal") != null ? this.get("fix-error-prefer-minimal").checked : true,
@@ -503,6 +502,7 @@ AppUI = class AppUI {
       beforeCursor: context.beforeCursor,
       afterCursor: context.afterCursor,
       error: context.error,
+      errorText: errorText,
       userIntent: intent,
       options: options,
       proposalId: proposalId
