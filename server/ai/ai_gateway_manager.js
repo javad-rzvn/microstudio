@@ -115,7 +115,13 @@ class AiGatewayManager {
     }
 
     const configuredGateway = this.server && this.server.config && this.server.config.ai_gateway ? this.server.config.ai_gateway : null;
-    const configuredId = configuredGateway && configuredGateway.providerProfileId != null && String(configuredGateway.providerProfileId).length > 0 ? String(configuredGateway.providerProfileId) : null;
+    const configuredId = configuredGateway && (
+      configuredGateway.textProviderProfileId != null && String(configuredGateway.textProviderProfileId).length > 0
+        ? String(configuredGateway.textProviderProfileId)
+        : configuredGateway.providerProfileId != null && String(configuredGateway.providerProfileId).length > 0
+          ? String(configuredGateway.providerProfileId)
+          : null
+    );
     if (configuredId) {
       const configured = this.store.getRuntimeById(configuredId);
       if (!configured) {

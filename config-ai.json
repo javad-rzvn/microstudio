@@ -1,5 +1,6 @@
 {
   "gateway": {
+    "textProviderProfileId": null,
     "providerProfileId": null,
     "imageProviderProfileId": null,
     "imageProvider": "placeholder",
