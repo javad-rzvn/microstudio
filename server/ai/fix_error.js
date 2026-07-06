@@ -171,6 +171,14 @@ class FixErrorService {
     return typeof path === "string" && /^doc\/[a-z0-9_-]+\.(md|txt|json)$/i.test(path);
   }
 
+  getPathStem(path) {
+    if (typeof path !== "string") {
+      return "";
+    }
+    const normalized = path.replace(/\\/g, "/").split("/").pop() || "";
+    return normalized.replace(/\.(ms|md|txt|json|js|py|lua)$/i, "");
+  }
+
   getSourceList(project) {
     if (!project || !Array.isArray(project.source_list)) {
       return [];
@@ -388,6 +396,7 @@ class FixErrorService {
       "Do not modify unrelated files.",
       "If there is not enough context, set needsMoreContext to true and ask concise questions.",
       "Projects use microStudio source files stored under ms/ and documentation files stored under doc/.",
+      "The change.path field must refer to the same file as request.filePath, ideally by echoing request.filePath exactly.",
       "For the MVP, return one change only and use changeType replace_file."
     ].join("\n");
   }
@@ -409,8 +418,15 @@ class FixErrorService {
     if (!change || typeof change !== "object") {
       return null;
     }
-    const path = this.normalizePath(change.path);
-    if (path !== request.filePath) {
+    const effectivePath = request.filePath;
+    const rawPath = typeof change.path === "string" ? change.path.trim() : "";
+    const path = this.normalizePath(rawPath);
+    const requestedStem = this.getPathStem(effectivePath);
+    const changeStem = this.getPathStem(rawPath);
+    const equivalentPath = path === effectivePath
+      || rawPath === effectivePath
+      || changeStem === requestedStem;
+    if (!equivalentPath) {
       throw safeError("AI proposed an unsafe or unsupported file path", 422);
     }
     const changeType = String(change.changeType || "").trim();
@@ -425,11 +441,11 @@ class FixErrorService {
     if (newContent.length > this.maxResponseBytes) {
       throw safeError("AI proposed content that is too large", 422);
     }
-    if (this.isCodePath(path) && this.detectUnsafeGeneratedCode(newContent)) {
+    if (this.isCodePath(effectivePath) && this.detectUnsafeGeneratedCode(newContent)) {
       throw safeError("AI proposed unsafe generated code", 422);
     }
     return {
-      path,
+      path: effectivePath,
       changeType: "replace_file",
       startLine: 1,
       endLine: 1,
