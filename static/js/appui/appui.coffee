@@ -12,6 +12,7 @@ class AppUI
       "options"
       "publish"
       "tabs"
+      "ai-generator"
     ]
 
     @menuoptions = [
@@ -74,6 +75,7 @@ class AppUI
 
     #@setSection("options")
     @createLoginFunctions()
+    @createAiGeneratorFunctions()
 
 
 
@@ -301,6 +303,7 @@ class AppUI
   backToProjectList:(useraction)->
     @hide "projectview"
     @show "myprojects"
+    @clearAiDraft()
     @app.runwindow.projectClosed()
     @app.debug.projectClosed()
     @app.tab_manager.projectClosed()
@@ -461,6 +464,392 @@ class AppUI
     #@app.explore.closeDetails() if section != "explore"
     @app.runwindow.hideAll()
     return
+
+  createAiGeneratorFunctions:()->
+    @aiDraft = null
+    @aiDraftByPath = {}
+    @aiDraftPreviewByPath = {}
+    @aiSelectedPath = null
+    @aiBusy = false
+
+    @setAction "ai-generator-generate",()=>
+      @generateAiDraft()
+
+    @setAction "ai-generator-regenerate",()=>
+      @regenerateAiDraft()
+
+    @setAction "ai-generator-explain",()=>
+      @explainAiDraft()
+
+    @setAction "ai-generator-apply",()=>
+      @applyAiDraft "apply_to_current_project"
+
+    @setAction "ai-generator-create-new",()=>
+      @applyAiDraft "new_project"
+
+    @setAction "ai-generator-cancel",()=>
+      @setSection "code",true
+
+    fileTree = @get("ai-generator-file-tree")
+    fileTree.addEventListener "click",(event)=>
+      target = event.target
+      while target? and target != fileTree and not target.classList.contains("ai-file-item")
+        target = target.parentNode
+      if target? and target.classList.contains("ai-file-item")
+        @selectAiDraftFile target.dataset.path
+
+    @get("ai-generator-target-mode").addEventListener "change",()=>
+      @updateAiGeneratorButtons()
+
+    for id in [
+      "ai-generator-idea"
+      "ai-generator-language"
+      "ai-generator-physics"
+      "ai-generator-difficulty"
+      "ai-generator-art-style"
+      "ai-generator-aspect-ratio"
+    ]
+      do (id)=>
+        @get(id).addEventListener "input",()=>
+          @updateAiGeneratorButtons()
+        @get(id).addEventListener "change",()=>
+          @updateAiGeneratorButtons()
+
+    @renderAiDraft null
+
+  clearAiDraft:()->
+    @aiDraft = null
+    @aiDraftByPath = {}
+    @aiDraftPreviewByPath = {}
+    @aiSelectedPath = null
+    @setAiStatus ""
+    @setAiWarnings []
+    @renderAiSummary null
+    @renderAiFileTree []
+    @renderAiPreview null
+    @setAiExplanation ""
+    @updateAiGeneratorButtons()
+
+  setAiStatus:(text,isError=false)->
+    element = @get("ai-generator-status")
+    return if not element?
+    element.textContent = text or ""
+    element.style.color = if isError then "#fecaca" else "rgba(191,219,254,.95)"
+
+  setAiWarnings:(warnings)->
+    container = @get("ai-generator-warnings")
+    return if not container?
+    container.innerHTML = ""
+    return if not warnings? or warnings.length == 0
+    for warning in warnings
+      item = document.createElement "div"
+      item.classList.add "warning"
+      item.textContent = warning
+      container.appendChild item
+
+  setAiExplanation:(text)->
+    element = @get("ai-generator-explanation-text")
+    return if not element?
+    element.textContent = text or ""
+
+  updateAiGeneratorButtons:()->
+    draftReady = @aiDraft?
+    targetMode = if @get("ai-generator-target-mode")? then @get("ai-generator-target-mode").value else "apply_to_current_project"
+    canGenerate = not @aiBusy
+    canRegenerate = draftReady and not @aiBusy
+    canExplain = draftReady and not @aiBusy
+    canApply = draftReady and not @aiBusy and targetMode == "apply_to_current_project"
+    for id in [
+      "ai-generator-generate"
+      "ai-generator-regenerate"
+      "ai-generator-apply"
+      "ai-generator-create-new"
+      "ai-generator-explain"
+    ]
+      element = @get(id)
+      continue if not element?
+      switch id
+        when "ai-generator-generate"
+          element.disabled = not canGenerate
+        when "ai-generator-regenerate"
+          element.disabled = not canRegenerate
+        when "ai-generator-apply"
+          element.disabled = not canApply
+        when "ai-generator-create-new"
+          element.disabled = not (draftReady and not @aiBusy)
+        when "ai-generator-explain"
+          element.disabled = not canExplain
+
+  setAiBusy:(loading)->
+    @aiBusy = loading
+    if loading
+      @setAiStatus "Working on the draft..."
+    @updateAiGeneratorButtons()
+
+  renderAiSummary:(draft)->
+    container = @get("ai-generator-summary")
+    return if not container?
+    container.innerHTML = ""
+    if not draft?
+      @get("ai-generator-summary-empty").style.display = "block"
+      return
+    @get("ai-generator-summary-empty").style.display = "none"
+    rows = [
+      ["Title", if draft.project? then draft.project.title else ""]
+      ["Slug", if draft.project? then draft.project.slug else ""]
+      ["Physics", draft.resolvedPhysicsMode or ""]
+      ["Difficulty", if draft.project? then draft.project.difficulty else ""]
+      ["Controls", if draft.gameDesign? then (draft.gameDesign.controls or []).join(", ") else ""]
+      ["Genre", if draft.gameDesign? then draft.gameDesign.genre else ""]
+      ["Core loop", if draft.gameDesign? then draft.gameDesign.coreLoop else ""]
+      ["Win condition", if draft.gameDesign? then draft.gameDesign.winCondition else ""]
+      ["Lose condition", if draft.gameDesign? then draft.gameDesign.loseCondition else ""]
+      ["Files", "#{if draft.preview? then draft.preview.length else 0} prepared"]
+    ]
+    for row in rows
+      el = document.createElement "div"
+      el.classList.add "ai-summary-row"
+      el.innerHTML = "<strong></strong><span></span>"
+      el.childNodes[0].textContent = "#{row[0]}:"
+      el.childNodes[1].textContent = " #{row[1] or ""}"
+      container.appendChild el
+
+  renderAiFileTree:(files)->
+    container = @get("ai-generator-file-tree")
+    return if not container?
+    container.innerHTML = ""
+    selectedPath = @aiSelectedPath
+    for entry in files or []
+      item = document.createElement "div"
+      item.classList.add "ai-file-item"
+      item.classList.add "selected" if entry.path == selectedPath
+      item.dataset.path = entry.path
+      label = document.createElement "span"
+      label.classList.add "path"
+      label.textContent = entry.path
+      badge = document.createElement "span"
+      badge.classList.add "badge"
+      badge.textContent = entry.status or "create"
+      item.appendChild label
+      item.appendChild badge
+      container.appendChild item
+
+  renderAiPreview:(file)->
+    container = @get("ai-generator-file-preview")
+    meta = @get("ai-generator-preview-file-name")
+    return if not container? or not meta?
+    container.innerHTML = ""
+    meta.textContent = ""
+    if not file?
+      container.textContent = "Select a file to inspect its contents."
+      return
+    meta.textContent = "#{file.path}#{if file.status? then " (#{file.status})" else ""}"
+    if file.status == "delete"
+      container.textContent = "This file will be deleted."
+      return
+    if file.previewDataUrl? or file.type == "image"
+      image = document.createElement "img"
+      image.classList.add "ai-preview-image"
+      image.src = file.previewDataUrl or "data:image/png;base64,#{file.contentBase64 or ""}"
+      image.alt = file.path
+      container.appendChild image
+      if file.preview?
+        preview = document.createElement "div"
+        preview.style.marginTop = "10px"
+        preview.style.color = "rgba(255,255,255,.75)"
+        preview.textContent = file.preview
+        container.appendChild preview
+      return
+    text = document.createElement "pre"
+    text.style.margin = "0"
+    text.style.whiteSpace = "pre-wrap"
+    text.style.wordBreak = "break-word"
+    text.textContent = if file.content? then "#{file.content}" else (file.preview or "")
+    container.appendChild text
+
+  renderAiDraft:(draft)->
+    @aiDraft = draft
+    @aiDraftByPath = {}
+    @aiDraftPreviewByPath = {}
+    @aiSelectedPath = null
+    if not draft?
+      @setAiStatus ""
+      @setAiWarnings []
+      @renderAiSummary null
+      @renderAiFileTree []
+      @renderAiPreview null
+      @setAiExplanation ""
+      @updateAiGeneratorButtons()
+      return
+    previewFiles = if draft.preview? then draft.preview else []
+    for file in previewFiles
+      @aiDraftPreviewByPath[file.path] = file
+    if draft.files?
+      for file in draft.files
+        @aiDraftByPath[file.path] = file
+    @aiSelectedPath = if previewFiles.length > 0 then previewFiles[0].path else null
+    @renderAiSummary draft
+    @setAiWarnings draft.warnings or []
+    @setAiStatus "Ready: #{if draft.project? then draft.project.title else "generated draft"} (#{draft.resolvedPhysicsMode or "manual"} physics)."
+    @renderAiFileTree previewFiles
+    selected = @selectAiDraftFile @aiSelectedPath,true
+    if not selected and previewFiles.length > 0
+      @renderAiPreview previewFiles[0]
+    @setAiExplanation ""
+    @updateAiGeneratorButtons()
+
+  selectAiDraftFile:(path,silent=false)->
+    return false if not path?
+    @aiSelectedPath = path
+    if not @aiDraftPreviewByPath[path]? and not @aiDraftByPath[path]?
+      @renderAiPreview(null) if not silent
+      return false
+    file = Object.assign {},@aiDraftByPath[path] or {},@aiDraftPreviewByPath[path] or {}
+    @renderAiFileTree(if @aiDraft? then @aiDraft.preview else [])
+    @renderAiPreview file
+    return true
+
+  getAiRequestPayload:()->
+    idea = @get("ai-generator-idea").value.trim()
+    targetMode = if @get("ai-generator-target-mode")? then @get("ai-generator-target-mode").value else "apply_to_current_project"
+    currentProjectId = if @app.project? then @app.project.id else null
+    idea: idea
+    language: @get("ai-generator-language").value
+    physics: @get("ai-generator-physics").value
+    difficulty: @get("ai-generator-difficulty").value
+    artStyle: @get("ai-generator-art-style").value
+    aspectRatio: @get("ai-generator-aspect-ratio").value
+    mode: targetMode
+    targetProjectId: if targetMode == "apply_to_current_project" then currentProjectId else null
+    constraints:
+      maxFiles: 20
+      maxFileSizeKb: 120
+      includeDocs: true
+      includeTutorialComments: true
+
+  postAiRequest:(url,payload)->
+    fetch url,
+      method: "POST"
+      credentials: "same-origin"
+      headers:
+        "Content-Type": "application/json"
+      body: JSON.stringify payload
+    .then (response)=>
+      response.text().then (text)=>
+        data = null
+        if text? and text.length > 0
+          try
+            data = JSON.parse text
+          catch error
+            data =
+              error: text
+        if not response.ok
+          err = new Error((if data? then data.error else null) or response.statusText or "Request failed")
+          err.response = data
+          throw err
+        data
+
+  generateAiDraft:()->
+    payload = @getAiRequestPayload()
+    if not payload.idea?.length
+      @setAiStatus "Describe the game you want to generate first.",true
+      return
+    if payload.mode == "apply_to_current_project" and not payload.targetProjectId?
+      @setAiStatus "Open a project before generating for the current project.",true
+      return
+    @setAiBusy true
+    @setAiStatus "Generating draft..."
+    @postAiRequest("/api/ai/generate-game",payload).then((draft)=>
+      @setAiBusy false
+      @renderAiDraft draft
+      @selectAiDraftFile(if draft.preview? and draft.preview.length > 0 then draft.preview[0].path else null)
+    ,(err)=>
+      @setAiBusy false
+      @setAiStatus(err.message or "Generation failed", true)
+      @setAiWarnings [err.message or "Generation failed"]
+
+  regenerateAiDraft:()->
+    if not @aiDraft?
+      @generateAiDraft()
+      return
+    payload = @getAiRequestPayload()
+    payload.draftId = @aiDraft.id
+    @setAiBusy true
+    @setAiStatus "Regenerating draft..."
+    @postAiRequest("/api/ai/regenerate-game",payload).then((draft)=>
+      @setAiBusy false
+      @renderAiDraft draft
+      @selectAiDraftFile(if draft.preview? and draft.preview.length > 0 then draft.preview[0].path else null)
+    ,(err)=>
+      @setAiBusy false
+      @setAiStatus(err.message or "Regeneration failed", true)
+      @setAiWarnings [err.message or "Regeneration failed"]
+
+  explainAiDraft:()->
+    if not @aiDraft?
+      @setAiStatus "Generate a draft first.",true
+      return
+    question = "Explain the game idea \"#{@get("ai-generator-idea").value.trim()}\" and how to extend the starter."
+    payload =
+      draftId: @aiDraft.id
+      question: question
+    @setAiBusy true
+    @setAiStatus "Generating explanation..."
+    @postAiRequest("/api/ai/explain-generated-game",payload).then((data)=>
+      @setAiBusy false
+      @setAiExplanation data.explanation or ""
+      @setAiStatus "Explanation ready."
+    ,(err)=>
+      @setAiBusy false
+      @setAiStatus(err.message or "Explanation failed", true)
+      @setAiExplanation ""
+
+  applyAiDraft:(mode)->
+    return @setAiStatus("Generate a draft first.",true) if not @aiDraft?
+    targetMode = mode or "apply_to_current_project"
+    if targetMode == "apply_to_current_project" and @aiDraft.request? and @aiDraft.request.mode == "new_project"
+      @setAiStatus "This draft is set up for a new project. Use Create as New Project.",true
+      return
+    if targetMode == "apply_to_current_project" and not @app.project?
+      @setAiStatus "Open a project before applying to the current project.",true
+      return
+    payload =
+      draftId: @aiDraft.id
+      mode: targetMode
+      targetProjectId: if targetMode == "apply_to_current_project" and @app.project? then @app.project.id else null
+    applyToCurrentProject = targetMode == "apply_to_current_project"
+    doApply = =>
+      saveAndApply = =>
+        @setAiBusy true
+        @setAiStatus(if targetMode == "new_project" then "Creating new project..." else "Applying to current project...")
+        @postAiRequest("/api/ai/apply-game",payload).then((result)=>
+          @setAiBusy false
+          @setAiStatus(if targetMode == "new_project" then "New project created." else "Draft applied.")
+          if targetMode == "new_project"
+            @app.updateProjectList result.projectId
+          else if @app.project?
+            @app.project.load()
+            @app.updateProjectList()
+          @app.showNotification(if targetMode == "new_project" then "AI project created" else "AI draft applied")
+        ,(err)=>
+          @setAiBusy false
+          @setAiStatus(err.message or "Apply failed", true)
+          @setAiWarnings [err.message or "Apply failed"]
+      if applyToCurrentProject and @app.project? and @app.project.pending_changes.length > 0
+        @app.project.savePendingChanges ()=>
+          saveAndApply()
+      else
+        saveAndApply()
+    overwriteCount = 0
+    deleteCount = 0
+    if @aiDraft.preview?
+      overwriteCount = @aiDraft.preview.filter((item)->item.status == "overwrite").length
+      deleteCount = @aiDraft.preview.filter((item)->item.status == "delete").length
+    if applyToCurrentProject and (overwriteCount > 0 or deleteCount > 0)
+      ConfirmDialog.confirm "This draft will overwrite #{overwriteCount} file(s) and delete #{deleteCount} file(s). Continue?",@app.translator.get("Apply"),@app.translator.get("Cancel"),()=>
+        doApply()
+    else
+      doApply()
 
   setDisplay:(element,value)->
     document.getElementById(element).style.display = value
@@ -674,6 +1063,7 @@ class AppUI
     #@hide "menu-projects"
     @hide "login-info"
     @nick = null
+    @clearAiDraft()
     @project = null
     #@get("user-info").style.display = "none"
 
@@ -859,6 +1249,7 @@ class AppUI
     return
 
   setProject:(@project,useraction=true)->
+    @clearAiDraft()
     @updateProjectTitle()
     @get("project-icon").src = location.origin+"/#{@project.owner.nick}/#{@project.slug}/#{@project.code}/icon.png"
     tab = "code"

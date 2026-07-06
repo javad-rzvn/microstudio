@@ -396,6 +396,7 @@ html(lang=language)
               li(id="menuitem-publish") <i class="fa fa-upload"></i><br /> #{translator.get("Publish")}
               li(id="menuitem-tabs" title=translator.get("Manage tabs and plugins"))
                 i.fas.fa-plus-circle
+              li(id="menuitem-ai-generator") <i class="fa fa-magic"></i><br /> #{translator.get("AI")}
 
           div.section-container#section-container
             div.section#code-section
@@ -437,6 +438,79 @@ html(lang=language)
 
             div.section#tabs-section
               include projecttabs.pug
+
+            div.section#ai-generator-section
+              div.ai-generator-panel
+                div.ai-generator-header
+                  h2 AI Game Generator
+                  p Generate a safe microStudio starter game from a prompt, inspect the draft, then apply it after review.
+                div.ai-generator-layout
+                  div.ai-generator-form
+                    label(for="ai-generator-idea") #{translator.get("Game idea")}
+                    textarea#ai-generator-idea(rows="8" placeholder="Create a 2D physics puzzle game where the player drops balls into baskets.")
+
+                    div.ai-generator-grid
+                      div
+                        label(for="ai-generator-language") #{translator.get("Language")}
+                        select#ai-generator-language
+                          option(value="JavaScript" selected) JavaScript
+                      div
+                        label(for="ai-generator-physics") #{translator.get("Physics")}
+                        select#ai-generator-physics
+                          option(value="none") none
+                          option(value="auto" selected) auto
+                          option(value="matterjs") Matter.js
+                      div
+                        label(for="ai-generator-difficulty") #{translator.get("Difficulty")}
+                        select#ai-generator-difficulty
+                          option(value="beginner" selected) beginner
+                          option(value="intermediate") intermediate
+                          option(value="advanced") advanced
+                      div
+                        label(for="ai-generator-art-style") #{translator.get("Art style")}
+                        select#ai-generator-art-style
+                          option(value="placeholder" selected) placeholder
+                          option(value="pixel-art") pixel art
+                          option(value="simple-shapes") simple shapes
+                      div
+                        label(for="ai-generator-aspect-ratio") #{translator.get("Aspect ratio")}
+                        select#ai-generator-aspect-ratio
+                          option(value="16:9" selected) 16:9
+                          option(value="4:3") 4:3
+                          option(value="1:1") 1:1
+                          option(value="portrait") portrait
+                      div
+                        label(for="ai-generator-target-mode") #{translator.get("Target")}
+                        select#ai-generator-target-mode
+                          option(value="apply_to_current_project" selected) #{translator.get("Current project")}
+                          option(value="new_project") #{translator.get("New project")}
+
+                    div.ai-generator-buttons
+                      button#ai-generator-generate #{translator.get("Generate")}
+                      button#ai-generator-regenerate #{translator.get("Regenerate")}
+                      button#ai-generator-apply #{translator.get("Apply to current project")}
+                      button#ai-generator-create-new #{translator.get("Create as new project")}
+                      button#ai-generator-explain #{translator.get("Explain")}
+                      button#ai-generator-cancel #{translator.get("Cancel")}
+
+                    div#ai-generator-status.ai-status
+                    div#ai-generator-warnings.ai-warnings
+
+                  div.ai-generator-preview
+                    div.ai-generator-summary
+                      h3 #{translator.get("Generated project summary")}
+                      div#ai-generator-summary-empty #{translator.get("Generate a draft to see the summary, files, and preview here.")}
+                      div#ai-generator-summary
+                    div.ai-generator-files
+                      h3 #{translator.get("Files")}
+                      div#ai-generator-file-tree
+                    div.ai-generator-preview-pane
+                      h3 #{translator.get("File preview")}
+                      div#ai-generator-preview-file-name
+                      pre#ai-generator-file-preview
+                    div.ai-generator-explanation
+                      h3 #{translator.get("Explanation")}
+                      div#ai-generator-explanation-text
 
 
     div.overlay#login-overlay

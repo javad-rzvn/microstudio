@@ -4,7 +4,7 @@ AppUI = class AppUI {
   constructor(app1) {
     var advanced, j, k, len, len1, ref, ref1, s;
     this.app = app1;
-    this.sections = ["code", "sprites", "maps", "assets", "sounds", "music", "doc", "sync", "options", "publish", "tabs"];
+    this.sections = ["code", "sprites", "maps", "assets", "sounds", "music", "doc", "sync", "options", "publish", "tabs", "ai-generator"];
     this.menuoptions = ["home", "explore", "projects", "help", "tutorials", "about", "usersettings"];
     ref = this.sections;
     for (j = 0, len = ref.length; j < len; j++) {
@@ -73,6 +73,7 @@ AppUI = class AppUI {
     }
     //@setSection("options")
     this.createLoginFunctions();
+    this.createAiGeneratorFunctions();
     advanced = document.getElementById("advanced-create-project-options-button");
     this.setAction("create-project-button", () => {
       this.show("create-project-overlay");
@@ -344,6 +345,7 @@ AppUI = class AppUI {
   backToProjectList(useraction) {
     this.hide("projectview");
     this.show("myprojects");
+    this.clearAiDraft();
     this.app.runwindow.projectClosed();
     this.app.debug.projectClosed();
     this.app.tab_manager.projectClosed();
@@ -530,6 +532,508 @@ AppUI = class AppUI {
     }
     //@app.explore.closeDetails() if section != "explore"
     this.app.runwindow.hideAll();
+  }
+
+  createAiGeneratorFunctions() {
+    var fileTree, i, len, path, ref;
+    this.aiDraft = null;
+    this.aiDraftByPath = {};
+    this.aiDraftPreviewByPath = {};
+    this.aiSelectedPath = null;
+    this.aiBusy = false;
+    this.setAction("ai-generator-generate", () => {
+      return this.generateAiDraft();
+    });
+    this.setAction("ai-generator-regenerate", () => {
+      return this.regenerateAiDraft();
+    });
+    this.setAction("ai-generator-explain", () => {
+      return this.explainAiDraft();
+    });
+    this.setAction("ai-generator-apply", () => {
+      return this.applyAiDraft("apply_to_current_project");
+    });
+    this.setAction("ai-generator-create-new", () => {
+      return this.applyAiDraft("new_project");
+    });
+    this.setAction("ai-generator-cancel", () => {
+      return this.setSection("code", true);
+    });
+    fileTree = this.get("ai-generator-file-tree");
+    fileTree.addEventListener("click", (event) => {
+      var target;
+      target = event.target;
+      while (target != null && target !== fileTree && !target.classList.contains("ai-file-item")) {
+        target = target.parentNode;
+      }
+      if ((target != null) && target.classList.contains("ai-file-item")) {
+        return this.selectAiDraftFile(target.dataset.path);
+      }
+    });
+    this.get("ai-generator-target-mode").addEventListener("change", () => {
+      return this.updateAiGeneratorButtons();
+    });
+    ref = ["ai-generator-idea", "ai-generator-language", "ai-generator-physics", "ai-generator-difficulty", "ai-generator-art-style", "ai-generator-aspect-ratio"];
+    for (i = 0, len = ref.length; i < len; i++) {
+      path = ref[i];
+      this.get(path).addEventListener("input", () => {
+        return this.updateAiGeneratorButtons();
+      });
+      this.get(path).addEventListener("change", () => {
+        return this.updateAiGeneratorButtons();
+      });
+    }
+    return this.renderAiDraft(null);
+  }
+
+  clearAiDraft() {
+    this.aiDraft = null;
+    this.aiDraftByPath = {};
+    this.aiDraftPreviewByPath = {};
+    this.aiSelectedPath = null;
+    this.setAiStatus("");
+    this.setAiWarnings([]);
+    this.renderAiSummary(null);
+    this.renderAiFileTree([]);
+    this.renderAiPreview(null);
+    this.setAiExplanation("");
+    return this.updateAiGeneratorButtons();
+  }
+
+  setAiStatus(text, isError = false) {
+    var element;
+    element = this.get("ai-generator-status");
+    if (element == null) {
+      return;
+    }
+    element.textContent = text || "";
+    element.style.color = isError ? "#fecaca" : "rgba(191,219,254,.95)";
+  }
+
+  setAiWarnings(warnings) {
+    var container, i, item, len, warning;
+    container = this.get("ai-generator-warnings");
+    if (container == null) {
+      return;
+    }
+    container.innerHTML = "";
+    if (!(warnings != null ? warnings.length : void 0)) {
+      return;
+    }
+    for (i = 0, len = warnings.length; i < len; i++) {
+      warning = warnings[i];
+      item = document.createElement("div");
+      item.classList.add("warning");
+      item.textContent = warning;
+      container.appendChild(item);
+    }
+  }
+
+  setAiExplanation(text) {
+    var element;
+    element = this.get("ai-generator-explanation-text");
+    if (element == null) {
+      return;
+    }
+    element.textContent = text || "";
+  }
+
+  updateAiGeneratorButtons() {
+    var canApply, canExplain, canGenerate, canRegenerate, draftReady, element, i, len, ref, targetMode;
+    draftReady = this.aiDraft != null;
+    targetMode = this.get("ai-generator-target-mode") != null ? this.get("ai-generator-target-mode").value : "apply_to_current_project";
+    canGenerate = !this.aiBusy;
+    canRegenerate = draftReady && !this.aiBusy;
+    canExplain = draftReady && !this.aiBusy;
+    canApply = draftReady && !this.aiBusy && targetMode === "apply_to_current_project";
+    ref = ["ai-generator-generate", "ai-generator-regenerate", "ai-generator-apply", "ai-generator-create-new", "ai-generator-explain"];
+    for (i = 0, len = ref.length; i < len; i++) {
+      element = this.get(ref[i]);
+      if (element == null) {
+        continue;
+      }
+      switch (ref[i]) {
+        case "ai-generator-generate":
+          element.disabled = !canGenerate;
+          break;
+        case "ai-generator-regenerate":
+          element.disabled = !canRegenerate;
+          break;
+        case "ai-generator-apply":
+          element.disabled = !canApply;
+          break;
+        case "ai-generator-create-new":
+          element.disabled = !(draftReady && !this.aiBusy);
+          break;
+        case "ai-generator-explain":
+          element.disabled = !canExplain;
+      }
+    }
+  }
+
+  setAiBusy(loading) {
+    this.aiBusy = loading;
+    if (loading) {
+      this.setAiStatus("Working on the draft...");
+    }
+    return this.updateAiGeneratorButtons();
+  }
+
+  renderAiSummary(draft) {
+    var container, entry, row, rows;
+    container = this.get("ai-generator-summary");
+    if (container == null) {
+      return;
+    }
+    container.innerHTML = "";
+    if (draft == null) {
+      this.get("ai-generator-summary-empty").style.display = "block";
+      return;
+    }
+    this.get("ai-generator-summary-empty").style.display = "none";
+    rows = [
+      ["Title", draft.project != null ? draft.project.title : ""],
+      ["Slug", draft.project != null ? draft.project.slug : ""],
+      ["Physics", draft.resolvedPhysicsMode || ""],
+      ["Difficulty", draft.project != null ? draft.project.difficulty : ""],
+      ["Controls", draft.gameDesign != null ? (draft.gameDesign.controls || []).join(", ") : ""],
+      ["Genre", draft.gameDesign != null ? draft.gameDesign.genre : ""],
+      ["Core loop", draft.gameDesign != null ? draft.gameDesign.coreLoop : ""],
+      ["Win condition", draft.gameDesign != null ? draft.gameDesign.winCondition : ""],
+      ["Lose condition", draft.gameDesign != null ? draft.gameDesign.loseCondition : ""],
+      ["Files", `${(draft.preview != null ? draft.preview.length : 0)} prepared`]
+    ];
+    for (entry of rows) {
+      row = document.createElement("div");
+      row.classList.add("ai-summary-row");
+      row.innerHTML = "<strong></strong><span></span>";
+      row.childNodes[0].textContent = `${entry[0]}:`;
+      row.childNodes[1].textContent = ` ${entry[1] || ""}`;
+      container.appendChild(row);
+    }
+  }
+
+  renderAiFileTree(files) {
+    var badge, container, entry, i, item, len, label, ref, selectedPath, statusText;
+    container = this.get("ai-generator-file-tree");
+    if (container == null) {
+      return;
+    }
+    container.innerHTML = "";
+    selectedPath = this.aiSelectedPath;
+    ref = files || [];
+    for (i = 0, len = ref.length; i < len; i++) {
+      entry = ref[i];
+      item = document.createElement("div");
+      item.classList.add("ai-file-item");
+      if (entry.path === selectedPath) {
+        item.classList.add("selected");
+      }
+      item.dataset.path = entry.path;
+      label = document.createElement("span");
+      label.classList.add("path");
+      label.textContent = entry.path;
+      badge = document.createElement("span");
+      badge.classList.add("badge");
+      statusText = entry.status || "create";
+      badge.textContent = statusText;
+      item.appendChild(label);
+      item.appendChild(badge);
+      container.appendChild(item);
+    }
+  }
+
+  renderAiPreview(file) {
+    var container, image, meta, preview, text;
+    container = this.get("ai-generator-file-preview");
+    meta = this.get("ai-generator-preview-file-name");
+    if (container == null || meta == null) {
+      return;
+    }
+    container.innerHTML = "";
+    meta.textContent = "";
+    if (file == null) {
+      container.textContent = "Select a file to inspect its contents.";
+      return;
+    }
+    meta.textContent = `${file.path}${file.status ? ` (${file.status})` : ""}`;
+    if (file.status === "delete") {
+      container.textContent = "This file will be deleted.";
+      return;
+    }
+    if ((file.previewDataUrl != null) || file.type === "image") {
+      image = document.createElement("img");
+      image.classList.add("ai-preview-image");
+      image.src = file.previewDataUrl || `data:image/png;base64,${file.contentBase64 || ""}`;
+      image.alt = file.path;
+      container.appendChild(image);
+      if (file.preview) {
+        preview = document.createElement("div");
+        preview.style.marginTop = "10px";
+        preview.style.color = "rgba(255,255,255,.75)";
+        preview.textContent = file.preview;
+        container.appendChild(preview);
+      }
+      return;
+    }
+    text = document.createElement("pre");
+    text.style.margin = "0";
+    text.style.whiteSpace = "pre-wrap";
+    text.style.wordBreak = "break-word";
+    text.textContent = file.content != null ? String(file.content) : (file.preview || "");
+    container.appendChild(text);
+  }
+
+  renderAiDraft(draft) {
+    var file, i, len, previewFiles, selected;
+    this.aiDraft = draft;
+    this.aiDraftByPath = {};
+    this.aiDraftPreviewByPath = {};
+    this.aiSelectedPath = null;
+    if (draft == null) {
+      this.setAiStatus("");
+      this.setAiWarnings([]);
+      this.renderAiSummary(null);
+      this.renderAiFileTree([]);
+      this.renderAiPreview(null);
+      this.setAiExplanation("");
+      return this.updateAiGeneratorButtons();
+    }
+    previewFiles = Array.isArray(draft.preview) ? draft.preview : [];
+    for (i = 0, len = previewFiles.length; i < len; i++) {
+      file = previewFiles[i];
+      this.aiDraftPreviewByPath[file.path] = file;
+    }
+    if (Array.isArray(draft.files)) {
+      for (i = 0, len = draft.files.length; i < len; i++) {
+        file = draft.files[i];
+        this.aiDraftByPath[file.path] = file;
+      }
+    }
+    this.aiSelectedPath = previewFiles.length > 0 ? previewFiles[0].path : null;
+    this.renderAiSummary(draft);
+    this.setAiWarnings(draft.warnings || []);
+    this.setAiStatus(`Ready: ${draft.project != null ? draft.project.title : "generated draft"} (${draft.resolvedPhysicsMode || "manual"} physics).`);
+    this.renderAiFileTree(previewFiles);
+    selected = this.selectAiDraftFile(this.aiSelectedPath, true);
+    if (!selected && previewFiles.length > 0) {
+      this.renderAiPreview(previewFiles[0]);
+    }
+    this.setAiExplanation("");
+    return this.updateAiGeneratorButtons();
+  }
+
+  selectAiDraftFile(path, silent = false) {
+    var file;
+    if (path == null) {
+      return false;
+    }
+    this.aiSelectedPath = path;
+    if ((this.aiDraftPreviewByPath[path] == null) && (this.aiDraftByPath[path] == null)) {
+      if (!silent) {
+        this.renderAiPreview(null);
+      }
+      return false;
+    }
+    file = Object.assign({}, this.aiDraftByPath[path] || {}, this.aiDraftPreviewByPath[path] || {});
+    this.renderAiFileTree((this.aiDraft != null ? this.aiDraft.preview : []));
+    this.renderAiPreview(file);
+    return true;
+  }
+
+  getAiRequestPayload() {
+    var currentProjectId, idea, payload, targetMode;
+    idea = this.get("ai-generator-idea").value.trim();
+    targetMode = this.get("ai-generator-target-mode").value || "apply_to_current_project";
+    currentProjectId = this.app.project != null ? this.app.project.id : null;
+    payload = {
+      idea: idea,
+      language: this.get("ai-generator-language").value,
+      physics: this.get("ai-generator-physics").value,
+      difficulty: this.get("ai-generator-difficulty").value,
+      artStyle: this.get("ai-generator-art-style").value,
+      aspectRatio: this.get("ai-generator-aspect-ratio").value,
+      mode: targetMode,
+      targetProjectId: targetMode === "apply_to_current_project" ? currentProjectId : null,
+      constraints: {
+        maxFiles: 20,
+        maxFileSizeKb: 120,
+        includeDocs: true,
+        includeTutorialComments: true
+      }
+    };
+    return payload;
+  }
+
+  postAiRequest(url, payload) {
+    return fetch(url, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    }).then((response) => {
+      return response.text().then((text) => {
+        var data, err;
+        data = null;
+        if (text != null && text.length > 0) {
+          try {
+            data = JSON.parse(text);
+          } catch (error) {
+            data = {
+              error: text
+            };
+          }
+        }
+        if (!response.ok) {
+          err = new Error((data != null ? data.error : void 0) || response.statusText || "Request failed");
+          err.response = data;
+          throw err;
+        }
+        return data;
+      });
+    });
+  }
+
+  generateAiDraft() {
+    var payload;
+    payload = this.getAiRequestPayload();
+    if (!(payload.idea != null ? payload.idea.length : void 0)) {
+      this.setAiStatus("Describe the game you want to generate first.", true);
+      return;
+    }
+    if (payload.mode === "apply_to_current_project" && payload.targetProjectId == null) {
+      this.setAiStatus("Open a project before generating for the current project.", true);
+      return;
+    }
+    this.setAiBusy(true);
+    this.setAiStatus("Generating draft...");
+    return this.postAiRequest("/api/ai/generate-game", payload).then((draft) => {
+      this.setAiBusy(false);
+      this.renderAiDraft(draft);
+      return this.selectAiDraftFile(draft.preview != null && draft.preview.length > 0 ? draft.preview[0].path : null);
+    }, (err) => {
+      this.setAiBusy(false);
+      this.setAiStatus(err.message || "Generation failed", true);
+      return this.setAiWarnings([err.message || "Generation failed"]);
+    });
+  }
+
+  regenerateAiDraft() {
+    var payload;
+    if (this.aiDraft == null) {
+      return this.generateAiDraft();
+    }
+    payload = this.getAiRequestPayload();
+    payload.draftId = this.aiDraft.id;
+    this.setAiBusy(true);
+    this.setAiStatus("Regenerating draft...");
+    return this.postAiRequest("/api/ai/regenerate-game", payload).then((draft) => {
+      this.setAiBusy(false);
+      this.renderAiDraft(draft);
+      return this.selectAiDraftFile(draft.preview != null && draft.preview.length > 0 ? draft.preview[0].path : null);
+    }, (err) => {
+      this.setAiBusy(false);
+      this.setAiStatus(err.message || "Regeneration failed", true);
+      return this.setAiWarnings([err.message || "Regeneration failed"]);
+    });
+  }
+
+  explainAiDraft() {
+    var payload, question;
+    if (this.aiDraft == null) {
+      this.setAiStatus("Generate a draft first.", true);
+      return;
+    }
+    question = `Explain the game idea "${this.get("ai-generator-idea").value.trim()}" and how to extend the starter.`;
+    payload = {
+      draftId: this.aiDraft.id,
+      question: question
+    };
+    this.setAiBusy(true);
+    this.setAiStatus("Generating explanation...");
+    return this.postAiRequest("/api/ai/explain-generated-game", payload).then((data) => {
+      this.setAiBusy(false);
+      this.setAiExplanation(data.explanation || "");
+      return this.setAiStatus("Explanation ready.");
+    }, (err) => {
+      this.setAiBusy(false);
+      this.setAiStatus(err.message || "Explanation failed", true);
+      return this.setAiExplanation("");
+    });
+  }
+
+  applyAiDraft(mode) {
+    var applyToCurrentProject, doApply, payload, project, targetMode, withConfirm;
+    if (this.aiDraft == null) {
+      this.setAiStatus("Generate a draft first.", true);
+      return;
+    }
+    targetMode = mode || "apply_to_current_project";
+    if (targetMode === "apply_to_current_project" && this.aiDraft.request != null && this.aiDraft.request.mode === "new_project") {
+      this.setAiStatus("This draft is set up for a new project. Use Create as New Project.", true);
+      return;
+    }
+    if (targetMode === "apply_to_current_project") {
+      project = this.app.project;
+      if (project == null) {
+        this.setAiStatus("Open a project before applying to the current project.", true);
+        return;
+      }
+    }
+    payload = {
+      draftId: this.aiDraft.id,
+      mode: targetMode,
+      targetProjectId: targetMode === "apply_to_current_project" && this.app.project != null ? this.app.project.id : null
+    };
+    applyToCurrentProject = targetMode === "apply_to_current_project";
+    withConfirm = () => {
+      var deleteCount, overwriteCount;
+      overwriteCount = 0;
+      deleteCount = 0;
+      if (this.aiDraft != null && Array.isArray(this.aiDraft.preview)) {
+        overwriteCount = this.aiDraft.preview.filter((item) => item.status === "overwrite").length;
+        deleteCount = this.aiDraft.preview.filter((item) => item.status === "delete").length;
+      }
+      if (applyToCurrentProject && (overwriteCount > 0 || deleteCount > 0)) {
+        return ConfirmDialog.confirm(`This draft will overwrite ${overwriteCount} file(s) and delete ${deleteCount} file(s). Continue?`, this.app.translator.get("Apply"), this.app.translator.get("Cancel"), () => {
+          return doApply();
+        });
+      } else {
+        return doApply();
+      }
+    };
+    doApply = () => {
+      var saveAndApply;
+      saveAndApply = () => {
+        this.setAiBusy(true);
+        this.setAiStatus(targetMode === "new_project" ? "Creating new project..." : "Applying to current project...");
+        return this.postAiRequest("/api/ai/apply-game", payload).then((result) => {
+          this.setAiBusy(false);
+          this.setAiStatus(targetMode === "new_project" ? "New project created." : "Draft applied.");
+          if (targetMode === "new_project") {
+            this.app.updateProjectList(result.projectId);
+          } else if (this.app.project != null) {
+            this.app.project.load();
+            this.app.updateProjectList();
+          }
+          return this.app.showNotification(targetMode === "new_project" ? "AI project created" : "AI draft applied");
+        }, (err) => {
+          this.setAiBusy(false);
+          this.setAiStatus(err.message || "Apply failed", true);
+          return this.setAiWarnings([err.message || "Apply failed"]);
+        });
+      };
+      if (applyToCurrentProject && this.app.project != null && this.app.project.pending_changes.length > 0) {
+        return this.app.project.savePendingChanges(() => {
+          return saveAndApply();
+        });
+      } else {
+        return saveAndApply();
+      }
+    };
+    return withConfirm();
   }
 
   setDisplay(element, value) {
@@ -782,6 +1286,7 @@ AppUI = class AppUI {
     //@hide "menu-projects"
     this.hide("login-info");
     this.nick = null;
+    this.clearAiDraft();
     return this.project = null;
   }
 
@@ -974,6 +1479,7 @@ AppUI = class AppUI {
   setProject(project1, useraction = true) {
     var j, len, ref, t, tab;
     this.project = project1;
+    this.clearAiDraft();
     this.updateProjectTitle();
     this.get("project-icon").src = location.origin + `/${this.project.owner.nick}/${this.project.slug}/${this.project.code}/icon.png`;
     tab = "code";
