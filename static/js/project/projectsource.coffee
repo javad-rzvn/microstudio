@@ -3,7 +3,7 @@ class @ProjectSource
     @name = @file.split(".")[0]
     @ext = @file.split(".")[1]
     @filename = @file
-    @file = "ms/#{@file}"
+    @file = @project.sourcePath(@file)
     s = @name.split "-"
     @shortname = s[s.length-1]
     @path_prefix = if s.length>1 then s.splice(0,s.length-1).join("-")+"-" else ""
@@ -32,7 +32,7 @@ class @ProjectSource
     @project.source_table[@name] = @
 
     @filename = @name + "." + @ext
-    @file = "ms/"+@filename
+    @file = @project.sourcePath(@filename)
     s = @name.split "-"
     @shortname = s[s.length-1]
     @path_prefix = if s.length>1 then s.splice(0,s.length-1).join("-")+"-" else ""

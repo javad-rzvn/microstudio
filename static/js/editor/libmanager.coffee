@@ -207,10 +207,11 @@ class @LibManager
   install:(id)->
     lib = @known_libs[id]
     if lib?
+      sourceRoot = if String(lib.language or "").toLowerCase() == "javascript" then "js" else "ms"
       @app.client.sendRequest {
         name: "list_project_files"
         project: id
-        folder: "ms"
+        folder: sourceRoot
       },(msg)=>
         console.info msg.files
         files = []
@@ -235,7 +236,7 @@ class @LibManager
             @app.client.sendRequest {
               name: "read_project_file"
               project: id
-              file: "ms/#{f.file}"
+              file: "#{sourceRoot}/#{f.file}"
             },(msg)=>
               console.info msg.content
               @app.project.writeSourceFile name,msg.content
@@ -253,7 +254,7 @@ class @LibManager
         @app.client.sendRequest {
           name: "delete_project_file"
           project: @app.project.id
-          file: "ms/#{file.name}.ms"
+          file: "#{@app.project.sourceRoot()}/#{file.name}.#{@app.project.sourceExtension()}"
         },(msg)=>
           console.info msg
           @app.project.updateSourceList()

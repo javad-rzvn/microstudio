@@ -43,6 +43,23 @@ class @Project
     @pending_changes = []
     @onbeforeunload = null
 
+  sourceRoot:()->
+    if String(@language or "").toLowerCase() == "javascript" then "js" else "ms"
+
+  sourceExtension:()->
+    if @sourceRoot() == "js" then "js" else "ms"
+
+  sourcePath:(name)->
+    root = @sourceRoot()
+    clean = String(name or "").replace(/\\/g,"/").trim()
+    return "#{root}/main.#{@sourceExtension()}" if not clean
+    if clean.startsWith("ms/") or clean.startsWith("js/")
+      return clean
+    fileName = clean.split("/").pop()
+    if fileName.indexOf(".")<0
+      fileName = "#{fileName}.#{@sourceExtension()}"
+    "#{root}/#{fileName}"
+
   getFullURL:()->
     if @public
       @url
@@ -79,7 +96,7 @@ class @Project
     },(msg)=>
       @[callback] msg.files
 
-  updateSourceList:()-> @updateFileList "ms","setSourceList"
+  updateSourceList:()-> @updateFileList @sourceRoot(),"setSourceList"
   updateSpriteList:()-> @updateFileList "sprites","setSpriteList"
   updateMapList:()-> @updateFileList "maps","setMapList"
   updateSoundList:()-> @updateFileList "sounds","setSoundList"
@@ -158,8 +175,8 @@ class @Project
     delete @map_table[old]
 
   fileUpdated:(msg)->
-    if msg.file.indexOf("ms/") == 0
-      name = msg.file.substring("ms/".length,msg.file.indexOf(".ms"))
+    if msg.file.indexOf("#{@sourceRoot()}/") == 0
+      name = msg.file.substring(@sourceRoot().length+1,msg.file.lastIndexOf("."))
       if @source_table[name]?
         @source_table[name].reload()
       else
@@ -198,7 +215,7 @@ class @Project
         @updateAssetList()
 
   fileDeleted:(msg)->
-    if msg.file.indexOf("ms/") == 0
+    if msg.file.indexOf("#{@sourceRoot()}/") == 0
       @updateSourceList()
     else if msg.file.indexOf("sprites/") == 0
       @updateSpriteList()
@@ -261,7 +278,7 @@ class @Project
     while @getSource(filename)?
       filename = "#{basename}#{count++}"
 
-    source = new ProjectSource @,filename+".ms"
+    source = new ProjectSource @,filename+".#{@sourceExtension()}"
     source.fetched = true
     @source_table[source.name] = source
     @source_list.push source
@@ -483,7 +500,7 @@ class @Project
     name = name.slice(1).join("-")
 
     switch folder
-      when "ms"
+      when "ms","js"
         @writeSourceFile name,content
 
       when "sprites"
@@ -505,7 +522,7 @@ class @Project
     @app.client.sendRequest {
       name: "write_project_file"
       project: @id
-      file: "ms/#{name}.ms"
+      file: @sourcePath(name)
       content: content
     },(msg)=>
       @updateSourceList()

@@ -236,13 +236,14 @@ this.LibManager = class LibManager {
   }
 
   install(id) {
-    var lib;
+    var lib, sourceRoot;
     lib = this.known_libs[id];
     if (lib != null) {
+      sourceRoot = String(lib.language || "").toLowerCase() === "javascript" ? "js" : "ms";
       return this.app.client.sendRequest({
         name: "list_project_files",
         project: id,
-        folder: "ms"
+        folder: sourceRoot
       }, (msg) => {
         var f, files, i, j, k, len, len1, len2, ref, ref1, results;
         console.info(msg.files);
@@ -279,7 +280,7 @@ this.LibManager = class LibManager {
             return this.app.client.sendRequest({
               name: "read_project_file",
               project: id,
-              file: `ms/${f.file}`
+              file: this.app.project.sourcePath(f.file)
             }, (msg) => {
               console.info(msg.content);
               return this.app.project.writeSourceFile(name, msg.content);
@@ -310,7 +311,7 @@ this.LibManager = class LibManager {
         results.push(this.app.client.sendRequest({
           name: "delete_project_file",
           project: this.app.project.id,
-          file: `ms/${file.name}.ms`
+          file: this.app.project.sourcePath(file.name)
         }, (msg) => {
           console.info(msg);
           return this.app.project.updateSourceList();

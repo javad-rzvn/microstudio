@@ -182,7 +182,7 @@ class @Editor extends Manager
     @save_time = Date.now()
     @app.project.addPendingChange @
     if @selected_source?
-      @app.project.lockFile "ms/#{@selected_source}.ms"
+      @app.project.lockFile @app.project.sourcePath(@selected_source)
       source = @app.project.getSource @selected_source
       if source?
         source.content = @getCode()
@@ -196,9 +196,9 @@ class @Editor extends Manager
         parser = new @language.parser(@editor.getValue())
         p = parser.parse()
         if not parser.error_info?
-          @app.runwindow.updateCode(@selected_source+".ms",@getCode())
+          @app.runwindow.updateCode(@selected_source+".#{@app.project.sourceExtension()}",@getCode())
       else
-        @app.runwindow.updateCode(@selected_source+".ms",@getCode())
+        @app.runwindow.updateCode(@selected_source+".#{@app.project.sourceExtension()}",@getCode())
 
   getCurrentLine:()->
     range = @editor.getSelectionRange()
@@ -224,7 +224,7 @@ class @Editor extends Manager
     @app.client.sendRequest {
       name: "write_project_file"
       project: @app.project.id
-      file: "ms/#{@selected_source}.ms"
+      file: @app.project.sourcePath(@selected_source)
       characters: keycount
       lines: lines
       content: @getCode()
@@ -601,9 +601,9 @@ class @Editor extends Manager
     lock = document.getElementById("editor-locked")
 
     if @selected_source?
-      if @app.project.isLocked("ms/#{@selected_source}.ms")
+      if @app.project.isLocked(@app.project.sourcePath(@selected_source))
         @editor.setReadOnly true
-        user = @app.project.isLocked("ms/#{@selected_source}.ms").user
+        user = @app.project.isLocked(@app.project.sourcePath(@selected_source)).user
         @showLock "<i class='fa fa-user'></i> Locked by #{user}",@app.appui.createFriendColor(user)
       else
         source = @app.project.getSource(@selected_source)
@@ -674,7 +674,7 @@ class @Editor extends Manager
     @app.client.sendRequest {
       name: "write_project_file"
       project: @app.project.id
-      file: "ms/#{name}.ms"
+      file: @app.project.sourcePath(name)
       properties: {}
       content: content
     },(msg)=>

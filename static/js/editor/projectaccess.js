@@ -309,7 +309,7 @@ this.ProjectAccess = (function() {
     switch (kind) {
       case "source":
         path.splice(0, 1);
-        path = "ms/" + path.join("/");
+        path = this.app.project.sourcePath(path.join("/"));
         this.app.project.writeFile(path, msg.content);
         this.app.appui.bumpElement("#menuitem-code");
         break;

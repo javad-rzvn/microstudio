@@ -304,13 +304,18 @@ class @WebApp
       if @server.config.player_extra_js?
         jsfiles = jsfiles.concat @server.config.player_extra_js
 
-      manager.listFiles "ms",(sources)=>
+      source_root = if String(project.language or "").toLowerCase() == "javascript" then "js" else "ms"
+      source_ext = if source_root == "js" then "js" else "ms"
+
+      manager.listFiles source_root,(sources)=>
         manager.listFiles "sprites",(sprites)=>
           manager.listFiles "maps",(maps)=>
             manager.listFiles "sounds",(sounds)=>
               manager.listFiles "music",(music)=>
                 manager.listFiles "assets",(assets)=>
                   resources = JSON.stringify
+                    sourceRoot: source_root
+                    sourceExtension: source_ext
                     sources: sources
                     images: sprites
                     maps: maps
@@ -447,16 +452,17 @@ class @WebApp
           res.send buffer
 
     # source files for player
-    @app.get /^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/ms\/[A-Za-z0-9_-]+.ms$/,(req,res)=>
+    @app.get /^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/(ms|js)\/[A-Za-z0-9_-]+\.(ms|js)$/,(req,res)=>
       s = req.path.split("/")
       access = @getProjectAccess req,res
       return if not access?
 
       user = access.user
       project = access.project
-      ms = s[s.length-1]
+      sourceRoot = s[s.length-3]
+      sourceFile = s[s.length-1]
 
-      @server.content.files.read "#{user.id}/#{project.id}/ms/#{ms}","text",(content)=>
+      @server.content.files.read "#{user.id}/#{project.id}/#{sourceRoot}/#{sourceFile}","text",(content)=>
         if content?
           res.setHeader("Content-Type", "application/javascript")
           res.send content

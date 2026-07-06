@@ -4,6 +4,8 @@ class @Player
     @source_count = 0
     @sources = {}
     @resources = resources
+    @source_root = resources.sourceRoot or "ms"
+    @source_ext = resources.sourceExtension or (if @source_root == "js" then "js" else "ms")
     @request_id = 1
     @pending_requests = {}
     if resources.sources?
@@ -24,7 +26,7 @@ class @Player
           if @source_count>=resources.sources.length and not @runtime?
             @start()
 
-    req.open "GET",location.origin+location.pathname+"ms/#{source.file}?v=#{source.version}"
+    req.open "GET",location.origin+location.pathname+"#{@source_root}/#{source.file}?v=#{source.version}"
     req.send()
 
   start:()->

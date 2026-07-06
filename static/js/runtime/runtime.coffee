@@ -1,5 +1,7 @@
 class @Runtime
   constructor:(@url,@sources,@resources,@listener)->
+    @source_root = resources.sourceRoot or "ms"
+    @source_ext = resources.sourceExtension or (if @source_root == "js" then "js" else "ms")
     @screen = new Screen @
 
     @audio = new AudioCore @
@@ -283,6 +285,7 @@ class @Runtime
       when "maps"
         @updateMap(file,version,data)
       when "ms"
+      when "js"
         @updateCode(file,version,data)
 
   projectFileDeleted:(type,file)->
@@ -352,7 +355,7 @@ class @Runtime
         @vm.clearWarnings()
       @updateSource name,data,true
     else
-      url = @url+"ms/#{name}.ms?v=#{version}"
+      url = @url+"#{@source_root}/#{name}.#{@source_ext}?v=#{version}"
 
       req = new XMLHttpRequest()
       req.onreadystatechange = (event) =>

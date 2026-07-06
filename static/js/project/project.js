@@ -53,6 +53,31 @@ this.Project = class Project {
     this.onbeforeunload = null;
   }
 
+  sourceRoot() {
+    return String(this.language || "").toLowerCase() === "javascript" ? "js" : "ms";
+  }
+
+  sourceExtension() {
+    return this.sourceRoot() === "js" ? "js" : "ms";
+  }
+
+  sourcePath(name) {
+    var clean, fileName, root;
+    root = this.sourceRoot();
+    clean = String(name || "").replace(/\\/g, "/").trim();
+    if (!clean) {
+      return `${root}/main.${this.sourceExtension()}`;
+    }
+    if (clean.startsWith("ms/") || clean.startsWith("js/")) {
+      return clean;
+    }
+    fileName = clean.split("/").pop();
+    if (fileName.indexOf(".") < 0) {
+      fileName = `${fileName}.${this.sourceExtension()}`;
+    }
+    return `${root}/${fileName}`;
+  }
+
   getFullURL() {
     if (this.public) {
       return this.url;
@@ -102,7 +127,7 @@ this.Project = class Project {
   }
 
   updateSourceList() {
-    return this.updateFileList("ms", "setSourceList");
+    return this.updateFileList(this.sourceRoot(), "setSourceList");
   }
 
   updateSpriteList() {
@@ -224,8 +249,8 @@ this.Project = class Project {
 
   fileUpdated(msg) {
     var name;
-    if (msg.file.indexOf("ms/") === 0) {
-      name = msg.file.substring("ms/".length, msg.file.indexOf(".ms"));
+    if (msg.file.indexOf(`${this.sourceRoot()}/`) === 0) {
+      name = msg.file.substring(this.sourceRoot().length + 1, msg.file.lastIndexOf("."));
       if (this.source_table[name] != null) {
         return this.source_table[name].reload();
       } else {
@@ -276,7 +301,7 @@ this.Project = class Project {
   }
 
   fileDeleted(msg) {
-    if (msg.file.indexOf("ms/") === 0) {
+    if (msg.file.indexOf(`${this.sourceRoot()}/`) === 0) {
       return this.updateSourceList();
     } else if (msg.file.indexOf("sprites/") === 0) {
       return this.updateSpriteList();
@@ -354,7 +379,7 @@ this.Project = class Project {
     while (this.getSource(filename) != null) {
       filename = `${basename}${count++}`;
     }
-    source = new ProjectSource(this, filename + ".ms");
+    source = new ProjectSource(this, `${filename}.${this.sourceExtension()}`);
     source.fetched = true;
     this.source_table[source.name] = source;
     this.source_list.push(source);
@@ -673,6 +698,7 @@ this.Project = class Project {
     name = name.slice(1).join("-");
     switch (folder) {
       case "ms":
+      case "js":
         return this.writeSourceFile(name, content);
       case "sprites":
         return this.writeSpriteFile(name, content, options.frames, options.fps);
@@ -691,7 +717,7 @@ this.Project = class Project {
     return this.app.client.sendRequest({
       name: "write_project_file",
       project: this.id,
-      file: `ms/${name}.ms`,
+      file: this.sourcePath(name),
       content: content
     }, (msg) => {
       return this.updateSourceList();

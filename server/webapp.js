@@ -288,7 +288,7 @@ this.WebApp = class WebApp {
     });
     // /user/project[/code/]
     this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+\/?)?)?$/, (req, res) => {
-      var access, embedder_policy, encoding, file, jsfiles, l, len3, lib, manager, o, pathcode, poster, prog_lang, project, redir, ref4, user;
+      var access, embedder_policy, encoding, file, jsfiles, l, len3, lib, manager, o, pathcode, poster, prog_lang, project, redir, ref4, source_ext, source_root, user;
       if (!this.server.rate_limiter.accept("page_load_ip", req.ip)) {
         return this.return429(req, res);
       }
@@ -319,7 +319,9 @@ this.WebApp = class WebApp {
         console.info("redirecting to: " + redir);
         return res.redirect(redir);
       }
-      file = `${user.id}/${project.id}/ms/main.ms`;
+      source_root = String(project.language || "").toLowerCase() === "javascript" ? "js" : "ms";
+      source_ext = source_root === "js" ? "js" : "ms";
+      file = `${user.id}/${project.id}/${source_root}/main.${source_ext}`;
       encoding = "text";
       manager = this.getProjectManager(project);
       if ((req.query != null) && (req.query.srv != null)) {
@@ -345,7 +347,7 @@ this.WebApp = class WebApp {
       if (this.server.config.player_extra_js != null) {
         jsfiles = jsfiles.concat(this.server.config.player_extra_js);
       }
-      return manager.listFiles("ms", (sources) => {
+      return manager.listFiles(source_root, (sources) => {
         return manager.listFiles("sprites", (sprites) => {
           return manager.listFiles("maps", (maps) => {
             return manager.listFiles("sounds", (sounds) => {
@@ -353,6 +355,8 @@ this.WebApp = class WebApp {
                 return manager.listFiles("assets", (assets) => {
                   var pf, resources;
                   resources = JSON.stringify({
+                    sourceRoot: source_root,
+                    sourceExtension: source_ext,
                     sources: sources,
                     images: sprites,
                     maps: maps,
@@ -507,8 +511,8 @@ this.WebApp = class WebApp {
       });
     });
     // source files for player
-    this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/ms\/[A-Za-z0-9_-]+.ms$/, (req, res) => {
-      var access, ms, project, s, user;
+    this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/(ms|js)\/[A-Za-z0-9_-]+\.(ms|js)$/, (req, res) => {
+      var access, project, s, sourceFile, sourceRoot, user;
       s = req.path.split("/");
       access = this.getProjectAccess(req, res);
       if (access == null) {
@@ -516,8 +520,9 @@ this.WebApp = class WebApp {
       }
       user = access.user;
       project = access.project;
-      ms = s[s.length - 1];
-      return this.server.content.files.read(`${user.id}/${project.id}/ms/${ms}`, "text", (content) => {
+      sourceRoot = s[s.length - 3];
+      sourceFile = s[s.length - 1];
+      return this.server.content.files.read(`${user.id}/${project.id}/${sourceRoot}/${sourceFile}`, "text", (content) => {
         if (content != null) {
           res.setHeader("Content-Type", "application/javascript");
           return res.send(content);

@@ -223,23 +223,127 @@ function normalizeImageFilename(asset, type, index) {
   return `${root}/${id}.png`;
 }
 
-function normalizeReferencePath(path) {
+function normalizeReferencePath(path, sourceRoot = "ms", sourceExt = "ms") {
   const cleaned = String(path || "")
     .replace(/\\/g, "/")
     .trim();
   if (!cleaned) {
-    return "source/main.js";
+    return `${sourceRoot}/main.${sourceExt}`;
   }
   if (cleaned.startsWith("source/")) {
-    return cleaned.replace(/^source\//, "ms/").replace(/\.js$/i, ".ms");
+    return cleaned.replace(/^source\//, `${sourceRoot}/`).replace(/\.js$/i, `.${sourceExt}`);
   }
-  if (cleaned.startsWith("ms/")) {
+  if (cleaned.startsWith("ms/") || cleaned.startsWith("js/")) {
     return cleaned;
   }
   if (cleaned.startsWith("doc/")) {
     return cleaned;
   }
   return cleaned;
+}
+
+function validateGeneratedCodeForLanguage(code, language) {
+  const config = gameLanguageConfig(language);
+  if (config.language === "JavaScript") {
+    return validateJavaScriptCode(code);
+  }
+  return validateMicroScriptCode(code);
+}
+
+function validateMicroScriptCode(code) {
+  const errors = [];
+  const rules = [
+    { pattern: /\bfunction\s+[a-zA-Z_$][\w$]*\s*\(/, message: "JavaScript function declaration is not valid microScript." },
+    { pattern: /\b(let|const|var)\s+[a-zA-Z_$]/, message: "JavaScript variable declaration is not valid microScript." },
+    { pattern: /=>/, message: "Arrow functions are not valid microScript." },
+    { pattern: /===|!==/, message: "Use == and != in microScript, not === or !==." },
+    { pattern: /&&|\|\|/, message: "Use and/or in microScript, not && or ||." },
+    { pattern: /\bnull\b|\bundefined\b/, message: "Use 0, false, empty string, list, or object instead of null/undefined." },
+    { pattern: /\bMath\./, message: "Use microScript functions like floor and random.next instead of Math.*." },
+    { pattern: /;\s*($|\n)/, message: "Semicolons are not used in microScript." },
+    { pattern: /\btouch\s*=\s*function\s*\(/, message: "Do not overwrite built-in touch API." },
+    { pattern: /\bmouse\s*=\s*function\s*\(/, message: "Do not overwrite built-in mouse API." },
+    { pattern: /\b(screen|keyboard|audio|system|sprites|maps|storage)\s*=/, message: "Do not overwrite built-in microStudio API objects." }
+  ];
+
+  for (const rule of rules) {
+    if (rule.pattern.test(code)) {
+      errors.push(rule.message);
+    }
+  }
+
+  if (!/\binit\s*=\s*function\s*\(/.test(code)) {
+    errors.push("Missing microScript lifecycle callback: init = function().");
+  }
+  if (!/\bupdate\s*=\s*function\s*\(/.test(code)) {
+    errors.push("Missing microScript lifecycle callback: update = function().");
+  }
+  if (!/\bdraw\s*=\s*function\s*\(/.test(code)) {
+    errors.push("Missing microScript lifecycle callback: draw = function().");
+  }
+
+  const reserved = new Set([
+    "as", "by", "to", "end", "then", "else", "elsif", "if", "for",
+    "while", "function", "return", "local", "object", "not", "and",
+    "or", "break", "continue", "screen", "keyboard", "mouse", "touch",
+    "audio", "system", "sprites", "maps", "storage"
+  ]);
+  const paramPattern = /\bfunction\s*\(([^)]*)\)/g;
+  let match;
+  while ((match = paramPattern.exec(code))) {
+    const params = match[1]
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+    for (const param of params) {
+      if (reserved.has(param)) {
+        errors.push(`Reserved microScript/API name used as parameter: ${param}`);
+      }
+    }
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors
+  };
+}
+
+function validateJavaScriptCode(code) {
+  const errors = [];
+  const rules = [
+    { pattern: /\binit\s*=\s*function\s*\(/, message: "microScript lifecycle syntax found in JavaScript output." },
+    { pattern: /\bupdate\s*=\s*function\s*\(/, message: "microScript lifecycle syntax found in JavaScript output." },
+    { pattern: /\bdraw\s*=\s*function\s*\(/, message: "microScript lifecycle syntax found in JavaScript output." },
+    { pattern: /^\s*end\s*$/m, message: "microScript end keyword found in JavaScript output." },
+    { pattern: /\bthen\b/, message: "microScript then keyword found in JavaScript output." },
+    { pattern: /\belsif\b/, message: "microScript elsif keyword found in JavaScript output." },
+    { pattern: /\bobject\s*$/m, message: "microScript object block found in JavaScript output." },
+    { pattern: /\bfor\s+[a-zA-Z_]\w*\s*=\s*.+\s+to\s+.+/i, message: "microScript for-to loop found in JavaScript output." },
+    { pattern: /\btouch\s*=\s*function\s*\(/, message: "Do not overwrite built-in touch API." },
+    { pattern: /\bmouse\s*=\s*function\s*\(/, message: "Do not overwrite built-in mouse API." },
+    { pattern: /\b(screen|keyboard|audio|system|sprites|maps|storage)\s*=/, message: "Do not overwrite built-in microStudio API objects." }
+  ];
+
+  for (const rule of rules) {
+    if (rule.pattern.test(code)) {
+      errors.push(rule.message);
+    }
+  }
+
+  if (!/\bfunction\s+init\s*\(/.test(code)) {
+    errors.push("Missing JavaScript lifecycle callback: function init().");
+  }
+  if (!/\bfunction\s+update\s*\(/.test(code)) {
+    errors.push("Missing JavaScript lifecycle callback: function update().");
+  }
+  if (!/\bfunction\s+draw\s*\(/.test(code)) {
+    errors.push("Missing JavaScript lifecycle callback: function draw().");
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors
+  };
 }
 
 function imagePromptPrefix(request) {
@@ -271,6 +375,44 @@ function shouldUseMatter(input) {
 
 function normalizeMode(value) {
   return value === "new_project" ? "new_project" : "apply_to_current_project";
+}
+
+function normalizeGameLanguage(value) {
+  const raw = String(value || "microScript").trim().toLowerCase();
+  if (raw === "microscript" || raw === "micro-script" || raw === "ms") {
+    return "microScript";
+  }
+  if (raw === "javascript" || raw === "java-script" || raw === "js") {
+    return "JavaScript";
+  }
+  return "microScript";
+}
+
+function gameLanguageConfig(language) {
+  const normalized = normalizeGameLanguage(language);
+  if (normalized === "JavaScript") {
+    return {
+      language: "JavaScript",
+      projectLanguage: "javascript",
+      sourceRoot: "js",
+      sourceExt: "js",
+      modelSourcePath: "source/main.js",
+      featureName: "game-generator-javascript"
+    };
+  }
+  return {
+    language: "microScript",
+    projectLanguage: "microscript_v2",
+    sourceRoot: "ms",
+    sourceExt: "ms",
+    modelSourcePath: "source/main.js",
+    featureName: "game-generator-microscript"
+  };
+}
+
+function languageSourcePath(language, path) {
+  const config = gameLanguageConfig(language);
+  return normalizeReferencePath(path, config.sourceRoot, config.sourceExt);
 }
 
 function allowedRootFromPath(path) {
@@ -412,7 +554,21 @@ function buildFallbackDoc(plan, generatedFiles) {
   return lines.join("\n");
 }
 
-function buildGeneratedAssetManifest(imageAssets) {
+function buildGeneratedAssetManifest(imageAssets, language = "microScript") {
+  const config = gameLanguageConfig(language);
+  if (config.language === "JavaScript") {
+    const lines = [
+      "// Generated image asset manifest.",
+      "// Reference these paths from your game code.",
+      "const generatedImageAssets = {"
+    ];
+    for (const asset of (Array.isArray(imageAssets) ? imageAssets : []).slice(0, 32)) {
+      const key = sanitizeSegment(asset && asset.id ? asset.id : "asset");
+      lines.push(`  ${key}: ${JSON.stringify(asset.filename)},`);
+    }
+    lines.push("};", "");
+    return lines.join("\n");
+  }
   const lines = [
     "// Generated image asset manifest.",
     "// Reference these paths from your game code.",
@@ -463,7 +619,11 @@ function buildGeneratedAssetManifestFile(normalized, request) {
   };
 }
 
-function buildFallbackGameCode(plan, resolvedPhysics) {
+function buildFallbackGameCode(plan, resolvedPhysics, language = "microScript") {
+  const config = gameLanguageConfig(language);
+  if (config.language === "JavaScript") {
+    return buildJavaScriptFallbackGameCode(plan, resolvedPhysics);
+  }
   const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
   const description = JSON.stringify((plan.project && plan.project.description) || "");
   const controlText = JSON.stringify((plan.gameDesign && Array.isArray(plan.gameDesign.controls) && plan.gameDesign.controls.length > 0)
@@ -759,6 +919,373 @@ end
 `;
 }
 
+function buildGameProjectSchema(language, request, resolvedPhysics) {
+  const config = gameLanguageConfig(language);
+  return {
+    project: {
+      title: "string",
+      slug: "string",
+      description: "string",
+      language: config.language,
+      graphics: "basic",
+      libraries: resolvedPhysics ? ["matter.js"] : [],
+      aspectRatio: request.aspectRatio,
+      orientation: request.aspectRatio === "portrait" ? "portrait" : "landscape",
+      difficulty: request.difficulty
+    },
+    gameDesign: {
+      genre: "string",
+      coreLoop: "string",
+      controls: ["string"],
+      winCondition: "string",
+      loseCondition: "string",
+      entities: [
+        {
+          name: "string",
+          role: "player",
+          description: "string"
+        }
+      ]
+    },
+    files: [
+      {
+        path: "source/main.js",
+        type: "code",
+        content: config.language === "JavaScript" ? "JavaScript source code only" : "microScript source code only"
+      },
+      {
+        path: "doc/README.md",
+        type: "doc",
+        content: "string"
+      }
+    ],
+    sprites: [],
+    maps: [],
+    imageAssets: [],
+    warnings: [],
+    nextSteps: []
+  };
+}
+
+function buildMicroScriptSystemPrompt(request, resolvedPhysics) {
+  return [
+    "You are an expert microStudio microScript game developer.",
+    "Generate a complete, playable starter 2D browser game project using microScript only.",
+    "Return only valid JSON. Do not use markdown or code fences.",
+    "Every source file must use microScript syntax only.",
+    "Required lifecycle callbacks: init = function(), update = function(), draw = function().",
+    "Do not generate JavaScript syntax, and do not mix languages.",
+    resolvedPhysics ? "Matter.js is enabled; create and clear the engine safely and keep body counts bounded." : "Do not use Matter.js unless the game concept explicitly needs rigid-body physics.",
+    "Use source/main.js in the JSON schema, and keep the generated code free of browser/network/DOM APIs.",
+    "Use microScript operators and syntax only: object/end, if/then/else/elsif, and/or/not, ==/!=, floor(), random.next().",
+    "Keep update() lightweight and bounded. Remove off-screen objects. Avoid large allocations in draw()."
+  ].join(" ");
+}
+
+function buildJavaScriptSystemPrompt(request, resolvedPhysics) {
+  return [
+    "You are an expert microStudio JavaScript game developer.",
+    "Generate a complete, playable starter 2D browser game project using JavaScript only.",
+    "Return only valid JSON. Do not use markdown or code fences.",
+    "Every source file must use JavaScript syntax only.",
+    "Required lifecycle callbacks: function init(), function update(), function draw().",
+    "Do not generate microScript syntax, and do not mix languages.",
+    resolvedPhysics ? "Matter.js is enabled; create and clear the engine safely and keep body counts bounded." : "Do not use Matter.js unless the game concept explicitly needs rigid-body physics.",
+    "Use source/main.js in the JSON schema, and keep the generated code free of browser/network/DOM APIs.",
+    "Use JavaScript syntax only: function declarations, braces, semicolons, const/let, Math.*, ===/!==, &&/||, and !.",
+    "Keep update() lightweight and bounded. Remove off-screen objects. Avoid large allocations in draw()."
+  ].join(" ");
+}
+
+function buildMicroScriptUserPrompt(request, resolvedPhysics) {
+  return [
+    "Generate a microStudio microScript game project.",
+    `Idea: ${request.idea}`,
+    "Language: microScript",
+    `Physics: ${request.physics}`,
+    `Resolved physics: ${resolvedPhysics ? "matterjs" : "manual"}`,
+    `Difficulty: ${request.difficulty}`,
+    `Aspect ratio: ${request.aspectRatio}`,
+    `Generate images: ${request.generateImages}`,
+    "Return only JSON in this exact shape:",
+    JSON.stringify(buildGameProjectSchema("microScript", request, resolvedPhysics), null, 2)
+  ].join("\n");
+}
+
+function buildJavaScriptUserPrompt(request, resolvedPhysics) {
+  return [
+    "Generate a microStudio JavaScript game project.",
+    `Idea: ${request.idea}`,
+    "Language: JavaScript",
+    `Physics: ${request.physics}`,
+    `Resolved physics: ${resolvedPhysics ? "matterjs" : "manual"}`,
+    `Difficulty: ${request.difficulty}`,
+    `Aspect ratio: ${request.aspectRatio}`,
+    `Generate images: ${request.generateImages}`,
+    "Return only JSON in this exact shape:",
+    JSON.stringify(buildGameProjectSchema("JavaScript", request, resolvedPhysics), null, 2)
+  ].join("\n");
+}
+
+function buildJavaScriptFallbackGameCode(plan, resolvedPhysics) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
+  const description = JSON.stringify((plan.project && plan.project.description) || "");
+  const controlText = JSON.stringify((plan.gameDesign && Array.isArray(plan.gameDesign.controls) && plan.gameDesign.controls.length > 0)
+    ? plan.gameDesign.controls.join(" | ")
+    : "Arrow keys to move. Space or R to restart.");
+  if (resolvedPhysics === "matterjs") {
+    return `// ${title}
+// ${description}
+// Safe JavaScript Matter.js starter. Keep body counts bounded for performance.
+
+const game = {
+  engine: null,
+  world: null,
+  player: null,
+  spawned: [],
+  spawnCounter: 0,
+  maxBodies: 24
+};
+
+const controlsText = ${controlText};
+
+function resetGame() {
+  if (game.world && game.engine && typeof Matter !== "undefined") {
+    Matter.World.clear(game.world, false);
+    Matter.Engine.clear(game.engine);
+  }
+
+  game.spawned = [];
+  game.spawnCounter = 0;
+  game.engine = Matter.Engine.create();
+  game.world = game.engine.world;
+  game.world.gravity.y = 1;
+
+  const ground = Matter.Bodies.rectangle(0, 112, 220, 20, { isStatic: true });
+  const leftWall = Matter.Bodies.rectangle(-110, 0, 20, 240, { isStatic: true });
+  const rightWall = Matter.Bodies.rectangle(110, 0, 20, 240, { isStatic: true });
+  const topWall = Matter.Bodies.rectangle(0, -120, 220, 20, { isStatic: true });
+  Matter.World.add(game.world, [ground, leftWall, rightWall, topWall]);
+
+  game.player = Matter.Bodies.circle(-60, 40, 10, { frictionAir: 0.06, restitution: 0.2 });
+  Matter.World.add(game.world, game.player);
+}
+
+function spawnOrb() {
+  if (game.spawned.length >= game.maxBodies) {
+    const oldBody = game.spawned.shift();
+    if (oldBody) {
+      Matter.World.remove(game.world, oldBody);
+    }
+  }
+
+  const body = Matter.Bodies.circle(random.next() * 80 - 40, -90, 7, { restitution: 0.6 });
+  game.spawned.push(body);
+  Matter.World.add(game.world, body);
+}
+
+function drawBody(body, color) {
+  if (!body) {
+    return;
+  }
+  if (body.circleRadius) {
+    screen.fillCircle(body.position.x, body.position.y, body.circleRadius, color);
+  } else if (body.bounds) {
+    const bounds = body.bounds;
+    screen.fillRect(body.position.x, body.position.y, bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y, color);
+  }
+}
+
+function init() {
+  resetGame();
+}
+
+function update() {
+  if (!game.engine) {
+    resetGame();
+  }
+
+  if (keyboard.press.SPACE || keyboard.press.KEY_R) {
+    resetGame();
+    return;
+  }
+
+  if (keyboard.LEFT) {
+    Matter.Body.applyForce(game.player, game.player.position, { x: -0.0025, y: 0 });
+  }
+  if (keyboard.RIGHT) {
+    Matter.Body.applyForce(game.player, game.player.position, { x: 0.0025, y: 0 });
+  }
+  if (keyboard.UP) {
+    Matter.Body.applyForce(game.player, game.player.position, { x: 0, y: -0.003 });
+  }
+  if (keyboard.DOWN) {
+    Matter.Body.applyForce(game.player, game.player.position, { x: 0, y: 0.003 });
+  }
+
+  game.spawnCounter += 1;
+  if (game.spawnCounter >= 90) {
+    game.spawnCounter = 0;
+    spawnOrb();
+  }
+
+  Matter.Engine.update(game.engine, 1000 / 60);
+}
+
+function draw() {
+  screen.fillRect(0, 0, screen.width, screen.height, "#08111f");
+  screen.drawText(${title}, 0, -92, 8, "#dbeafe");
+  screen.drawText(controlsText, 0, 92, 5, "#cbd5e1");
+  drawBody(game.player, "#38bdf8");
+  for (let i = 0; i < game.spawned.length; i += 1) {
+    drawBody(game.spawned[i], "#fbbf24");
+  }
+  screen.drawText("Press Space or R to restart", 0, 76, 5, "#94a3b8");
+}
+`;
+  }
+
+  return `// ${title}
+// ${description}
+// Safe JavaScript arcade starter. Keep active objects bounded for performance.
+
+const game = {
+  player: {
+    x: 0,
+    y: 62,
+    vx: 0,
+    vy: 0,
+    size: 12
+  },
+  stars: [],
+  score: 0,
+  lives: 3,
+  spawnTimer: 0,
+  gameOver: false,
+  message: "Use the arrow keys to move.",
+  time: 0,
+  maxStars: 36
+};
+
+const controlsText = ${controlText};
+
+function resetGame() {
+  game.player.x = 0;
+  game.player.y = 62;
+  game.player.vx = 0;
+  game.player.vy = 0;
+  game.player.size = 12;
+  game.stars = [];
+  game.score = 0;
+  game.lives = 3;
+  game.spawnTimer = 0;
+  game.gameOver = false;
+  game.message = "Use the arrow keys to move.";
+  game.time = 0;
+}
+
+function spawnStar() {
+  if (game.stars.length >= game.maxStars) {
+    return;
+  }
+
+  const star = {
+    x: random.next() * 180 - 90,
+    y: -100,
+    vx: (random.next() - 0.5) * 0.7,
+    vy: 1.4 + random.next() * 1.2,
+    size: 8
+  };
+  game.stars.push(star);
+}
+
+function hit(ax, ay, aSize, bx, by, bSize) {
+  return Math.abs(ax - bx) < (aSize + bSize) * 0.55 && Math.abs(ay - by) < (aSize + bSize) * 0.55;
+}
+
+function init() {
+  resetGame();
+}
+
+function update() {
+  if (keyboard.press.SPACE || keyboard.press.KEY_R) {
+    resetGame();
+    return;
+  }
+
+  if (game.gameOver) {
+    return;
+  }
+
+  game.time += 1;
+
+  if (keyboard.LEFT) {
+    game.player.vx -= 0.5;
+  }
+  if (keyboard.RIGHT) {
+    game.player.vx += 0.5;
+  }
+  if (keyboard.UP) {
+    game.player.vy -= 0.5;
+  }
+  if (keyboard.DOWN) {
+    game.player.vy += 0.5;
+  }
+
+  game.player.vx *= 0.94;
+  game.player.vy *= 0.94;
+  game.player.x += game.player.vx;
+  game.player.y += game.player.vy;
+
+  game.player.x = Math.max(-92, Math.min(92, game.player.x));
+  game.player.y = Math.max(-92, Math.min(92, game.player.y));
+
+  game.spawnTimer -= 1;
+  if (game.spawnTimer <= 0) {
+    game.spawnTimer = 32;
+    spawnStar();
+  }
+
+  for (let i = game.stars.length - 1; i >= 0; i -= 1) {
+    const star = game.stars[i];
+    star.x += star.vx;
+    star.y += star.vy;
+
+    if (hit(game.player.x, game.player.y, game.player.size, star.x, star.y, star.size)) {
+      game.score += 1;
+      game.stars.splice(i, 1);
+    } else if (star.y > 110) {
+      game.stars.splice(i, 1);
+      game.lives -= 1;
+      if (game.lives <= 0) {
+        game.gameOver = true;
+      }
+    }
+  }
+}
+
+function draw() {
+  screen.fillRect(0, 0, screen.width, screen.height, "#0f172a");
+  screen.drawText(${title}, 0, -92, 8, "#e2e8f0");
+  screen.drawText("Score: " + game.score + "  Lives: " + game.lives, 0, -78, 5, "#cbd5e1");
+  screen.drawText(controlsText, 0, 92, 5, "#cbd5e1");
+
+  screen.fillCircle(game.player.x, game.player.y, game.player.size, "#38bdf8");
+  screen.drawCircle(game.player.x, game.player.y, game.player.size + 1, "#0ea5e9");
+
+  for (let i = 0; i < game.stars.length; i += 1) {
+    const star = game.stars[i];
+    screen.fillCircle(star.x, star.y, star.size, "#fbbf24");
+  }
+
+  if (game.gameOver) {
+    screen.drawText("Game Over", 0, -6, 10, "#fca5a5");
+    screen.drawText("Press Space or R to restart", 0, 10, 6, "#f8fafc");
+  }
+}
+`;
+}
+
 function createPreviewDataUrl(buffer) {
   return `data:image/png;base64,${buffer.toString("base64")}`;
 }
@@ -840,7 +1367,7 @@ class AiGameGeneratorService {
   validateRequest(input) {
     const request = {
       idea: typeof input.idea === "string" ? input.idea.trim() : "",
-      language: "microScript",
+      language: normalizeGameLanguage(input.language),
       physics: ["none", "auto", "matterjs"].includes(input.physics) ? input.physics : "auto",
       difficulty: ["beginner", "intermediate", "advanced"].includes(input.difficulty) ? input.difficulty : "beginner",
       artStyle: ["placeholder", "pixel-art", "simple-shapes"].includes(input.artStyle) ? input.artStyle : "placeholder",
@@ -870,135 +1397,34 @@ class AiGameGeneratorService {
 
   async generateGameProject(input, user) {
     const request = this.validateRequest(input);
+    if (request.language === "JavaScript") {
+      return this.generateJavaScriptGameProject(request, user);
+    }
+    return this.generateMicroScriptGameProject(request, user);
+  }
+
+  async generateMicroScriptGameProject(request, user) {
+    return this.generateGameProjectForLanguage(request, user, gameLanguageConfig("microScript"));
+  }
+
+  async generateJavaScriptGameProject(request, user) {
+    return this.generateGameProjectForLanguage(request, user, gameLanguageConfig("JavaScript"));
+  }
+
+  async generateGameProjectForLanguage(request, user, config) {
     const resolvedPhysics = shouldUseMatter(request);
-    const systemPrompt = [
-      "You are an expert microStudio microScript game developer and performance-minded game engineer.",
-      "Generate a complete, playable starter 2D browser game project in microScript syntax only, never JavaScript.",
-      "Return only valid JSON matching the provided schema. No markdown, no code fences, no explanations outside JSON.",
-      "Use source/main.js in the JSON file list, but the content must be microScript because the server converts source/main.js to ms/main.ms.",
-      "Every code file must include exactly one init = function(), one update = function(), and one draw = function().",
-      "Do not use JavaScript syntax: no function name() {}, let, const, var, semicolons, null, undefined, ===, !==, &&, ||, Math.*, arrow functions, classes, imports, or browser event handlers.",
-      "Do not overwrite microStudio API globals such as screen, keyboard, mouse, touch, audio, system, sprites, maps, storage, or Matter.",
-      "Do not define functions or variables named touch or mouse; read the built-in touch and mouse objects inside update() instead.",
-      "Do not use reserved words as variable or parameter names: by, as, to, end, then, else, elsif, if, for, while, function, return, local, object, not, and, or.",
-      "Use safe names like a_size, b_y, body_list, handleClick, player_body, and spawnCounter.",
-      "Use microScript operators: and, or, not, ==, !=. Use floor(), abs(), min(), max(), random.next() rather than JavaScript Math.*.",
-      "Use microStudio drawing APIs such as screen.fillRect, screen.drawRect, screen.drawLine, screen.drawText, screen.fillCircle, and screen.drawCircle.",
-      "Keep update() lightweight: do not allocate large arrays in update/draw, cap active entities, remove off-screen objects, and keep loops bounded.",
-      "Keep draw() rendering simple: no per-frame asset generation, no expensive nested loops over large maps, and no unnecessary string building inside object loops.",
-      "Use simple deterministic game state stored in one game = object block and small helper functions.",
-      "Include restart logic using keyboard.press.SPACE or keyboard.press.KEY_R.",
-      "Do not include secrets, external network calls, eval, unsafe code, or unsupported file paths.",
-      resolvedPhysics ? "Matter.js is enabled for this request; create/clear the engine safely, keep body counts bounded, and step Matter.Engine.update once per update()." : "Do not use Matter.js unless the game concept explicitly needs rigid-body physics.",
-      "Use source/*.js for code file entries and doc/*.md or doc/*.txt for docs.",
-      "Put sprite and map metadata in the sprites and maps arrays instead of file entries.",
-      request.generateImages ? "Include an imageAssets array with short, specific game-asset prompts, stable ids, normalized filenames, and usedByFile values." : "Do not include imageAssets unless the user explicitly enabled image generation.",
-      request.generateImages ? `Use the image style ${request.imageStyle} and keep prompts consistent across all assets.` : "",
-      request.generateImages ? "Sprites should request transparent backgrounds when possible. Backgrounds should remain opaque." : "",
-      "Beginner difficulty should include concise comments explaining major sections, not comments on every line."
-    ].filter(Boolean).join(" ");
-
-    const userPrompt = [
-      `Idea: ${request.idea}`,
-      `Language: ${request.language}`,
-      `Physics: ${request.physics} (resolved: ${resolvedPhysics ? "matterjs" : "manual"})`,
-      `Difficulty: ${request.difficulty}`,
-      `Art style: ${request.artStyle}`,
-      `Aspect ratio: ${request.aspectRatio}`,
-      `Generate images: ${request.generateImages}`,
-      `Image provider: ${request.imageProvider}`,
-      `Image style: ${request.imageStyle}`,
-      `Transparent sprites: ${request.transparentSprites}`,
-      `Asset resolution: ${request.assetResolution}`,
-      `Mode: ${request.mode}`,
-      `Constraints: maxFiles=${request.constraints.maxFiles}, maxFileSizeKb=${request.constraints.maxFileSizeKb}, includeDocs=${request.constraints.includeDocs}, includeTutorialComments=${request.constraints.includeTutorialComments}`,
-      "MicroScript rules that must be followed in file.content:",
-      "- init = function() ... end, update = function() ... end, draw = function() ... end",
-      "- no JavaScript syntax, no semicolons, no braces, no let/const/var, no null",
-      "- never assign touch = function() or mouse = function(); use handleClick() and call it from update()",
-      "- cap active arrays: enemies/items/projectiles should have max counts and remove off-screen entries",
-      "- avoid reserved names by/as/to/end/then/else/if/for/while/function/return/local/object/not/and/or",
-      "- prefer readable, small helper functions and bounded loops",
-      "Return this exact shape:",
-      JSON.stringify({
-          project: {
-            title: "string",
-            slug: "string",
-            description: "string",
-            language: "microScript",
-            graphics: "basic",
-            libraries: resolvedPhysics ? ["matter.js"] : [],
-            aspectRatio: "16:9",
-          orientation: "landscape",
-          difficulty: request.difficulty
-        },
-        gameDesign: {
-          genre: "string",
-          coreLoop: "string",
-          controls: ["string"],
-          winCondition: "string",
-          loseCondition: "string",
-          entities: [
-            {
-              name: "string",
-              role: "player",
-              description: "string"
-            }
-          ]
-        },
-        files: [
-          {
-            path: "source/main.js",
-            type: "code",
-            content: "string"
-          },
-          {
-            path: "doc/README.md",
-            type: "doc",
-            content: "string"
-          }
-        ],
-        sprites: [
-          {
-            name: "string",
-            kind: "placeholder",
-            width: 32,
-            height: 32,
-            description: "string"
-          }
-        ],
-        maps: [
-          {
-            name: "string",
-            width: 20,
-            height: 12,
-            tileSize: 16,
-            description: "string"
-          }
-        ],
-        imageAssets: [
-          {
-            id: "player_idle",
-            type: "sprite",
-            filename: "sprites/player_idle.png",
-            prompt: "A small game-ready character sprite",
-            width: 64,
-            height: 64,
-            transparentBackground: true,
-            usedByFile: "source/main.js"
-          }
-        ],
-        warnings: ["string"],
-        nextSteps: ["string"]
-      }, null, 2)
-    ].join("\n");
-
+    const systemPrompt = config.language === "JavaScript"
+      ? buildJavaScriptSystemPrompt(request, resolvedPhysics)
+      : buildMicroScriptSystemPrompt(request, resolvedPhysics);
+    const userPrompt = config.language === "JavaScript"
+      ? buildJavaScriptUserPrompt(request, resolvedPhysics)
+      : buildMicroScriptUserPrompt(request, resolvedPhysics);
     const providerResult = await this.gateway.generate({
-      feature: "game-generator",
+      feature: config.featureName,
       purpose: "text",
       providerProfileId: request.providerProfileId,
       responseFormat: "json",
-      temperature: 0.2,
+      temperature: 0.15,
       maxTokens: 5000,
       userId: user && user.id != null ? user.id : null,
       messages: [
@@ -1008,15 +1434,14 @@ class AiGameGeneratorService {
     });
 
     const parsed = this.parseModelJson(providerResult.content);
-    const normalized = await this.validateGeneratedProject(parsed, request, resolvedPhysics, user);
+    const normalized = await this.validateGeneratedProject(parsed, request, resolvedPhysics, user, config);
     normalized.provider = {
       id: providerResult.providerId,
       name: providerResult.providerName,
       modelId: providerResult.modelId
     };
     const targetProject = request.mode === "apply_to_current_project" ? this.getProject(request.targetProjectId) : null;
-    const draft = await this.createProjectDraft(user, request, normalized, targetProject, resolvedPhysics);
-    return draft;
+    return this.createProjectDraft(user, request, normalized, targetProject, resolvedPhysics);
   }
 
   parseModelJson(content) {
@@ -1039,7 +1464,7 @@ class AiGameGeneratorService {
     return this.server.content.projects[projectId] || null;
   }
 
-  async validateGeneratedProject(projectJson, request, resolvedPhysics, user) {
+  async validateGeneratedProject(projectJson, request, resolvedPhysics, user, config) {
     const warnings = Array.isArray(projectJson.warnings) ? projectJson.warnings.filter((w) => typeof w === "string").slice(0, 20) : [];
     const nextSteps = Array.isArray(projectJson.nextSteps) ? projectJson.nextSteps.filter((w) => typeof w === "string").slice(0, 20) : [];
     const projectInfo = projectJson.project || {};
@@ -1048,9 +1473,10 @@ class AiGameGeneratorService {
     const description = typeof projectInfo.description === "string" ? projectInfo.description.trim().slice(0, 1000) : "";
     const libraries = resolvedPhysics ? ["matter.js"] : [];
     const gameDesign = this.validateGameDesign(projectJson.gameDesign, request);
-    const filesResult = await this.sanitizeGeneratedFiles(projectJson.files, request, resolvedPhysics, warnings);
+    const languageConfig = config || gameLanguageConfig(request.language);
+    const filesResult = await this.sanitizeGeneratedFiles(projectJson.files, request, resolvedPhysics, warnings, languageConfig);
     const imageAssets = request.generateImages
-      ? await this.validateGeneratedImageAssets(projectJson.imageAssets, request, warnings, title, slug, user)
+      ? await this.validateGeneratedImageAssets(projectJson.imageAssets, request, warnings, title, slug, user, languageConfig)
       : [];
     const imageFiles = request.generateImages
       ? await this.generateImageAssetFiles(imageAssets, request, warnings, title, slug, user)
@@ -1068,18 +1494,18 @@ class AiGameGeneratorService {
       throw new Error(`Generated project contains too many files (${files.length} > ${request.constraints.maxFiles})`);
     }
 
-    const mainFile = files.find((file) => file.path === "ms/main.ms");
+    const mainFile = files.find((file) => file.path === `${languageConfig.sourceRoot}/main.${languageConfig.sourceExt}`);
     if (mainFile == null) {
       files.unshift({
-        path: "ms/main.ms",
+        path: `${languageConfig.sourceRoot}/main.${languageConfig.sourceExt}`,
         type: "code",
         content: buildFallbackGameCode({
           project: { title, description },
           gameDesign,
           nextSteps
-        }, resolvedPhysics),
+        }, resolvedPhysics, languageConfig.language),
         encoding: "utf8",
-        sourcePath: "source/main.js",
+        sourcePath: languageConfig.modelSourcePath,
         preview: "Fallback starter code inserted by server"
       });
     }
@@ -1104,7 +1530,7 @@ class AiGameGeneratorService {
         title,
         slug,
         description,
-        language: "microScript",
+        language: languageConfig.language,
         graphics: "basic",
         libraries,
         aspectRatio: request.aspectRatio,
@@ -1167,8 +1593,8 @@ class AiGameGeneratorService {
     }
 
     if (request.generateImages && normalized.imageAssets.length > 0) {
-      const manifest = buildGeneratedAssetManifest(normalized.imageAssets);
-      const mainFile = normalized.files.find((file) => file.path === "ms/main.ms" && typeof file.content === "string");
+      const manifest = buildGeneratedAssetManifest(normalized.imageAssets, languageConfig.language);
+      const mainFile = normalized.files.find((file) => file.path === `${languageConfig.sourceRoot}/main.${languageConfig.sourceExt}` && typeof file.content === "string");
       if (mainFile != null && !mainFile.content.includes("GENERATED_IMAGE_ASSETS")) {
         mainFile.content = `${manifest}${mainFile.content}`;
         mainFile.preview = mainFile.content.slice(0, 2000);
@@ -1201,7 +1627,7 @@ class AiGameGeneratorService {
     };
   }
 
-  async sanitizeGeneratedFiles(files, request, resolvedPhysics, warnings) {
+  async sanitizeGeneratedFiles(files, request, resolvedPhysics, warnings, languageConfig) {
     const safeFiles = [];
     const inputFiles = Array.isArray(files) ? files : [];
     let codeFileCount = 0;
@@ -1223,12 +1649,12 @@ class AiGameGeneratorService {
           warnings.push(`Rejected source file with unsupported extension: ${file.path}`);
           continue;
         }
-        const normalizedPath = normalizeFinalPath("ms", rawName, "ms");
+        const normalizedPath = normalizeFinalPath(languageConfig.sourceRoot, rawName, languageConfig.sourceExt);
         if (!normalizedPath) {
           warnings.push(`Rejected source file with empty or invalid name: ${file.path}`);
           continue;
         }
-        const content = this.sanitizeCodeContent(file.content, resolvedPhysics, request, warnings, file.path);
+        const content = this.sanitizeCodeContent(file.content, resolvedPhysics, request, warnings, file.path, languageConfig);
         if (Buffer.byteLength(content, "utf8") > maxBytes) {
           throw new Error(`Code file too large: ${file.path}`);
         }
@@ -1278,9 +1704,10 @@ class AiGameGeneratorService {
     return { files: safeFiles, codeFileCount };
   }
 
-  validateGeneratedImageAssets(imageAssets, request, warnings, title, slug, user) {
+  validateGeneratedImageAssets(imageAssets, request, warnings, title, slug, user, languageConfig) {
     const source = Array.isArray(imageAssets) ? imageAssets.slice(0, 16) : [];
     const normalized = [];
+    const config = languageConfig || gameLanguageConfig(request.language);
     let index = 0;
     for (const asset of source) {
       if (!asset || typeof asset !== "object") {
@@ -1288,7 +1715,7 @@ class AiGameGeneratorService {
       }
       const type = normalizeImageType(typeof asset.type === "string" ? asset.type : "sprite");
       const filename = normalizeImageFilename(asset, type, index);
-      const usedByFile = normalizeReferencePath(asset.usedByFile || "source/main.js");
+      const usedByFile = normalizeReferencePath(asset.usedByFile || config.modelSourcePath, config.sourceRoot, config.sourceExt);
       const prompt = this.sanitizeImagePrompt(asset.prompt, request, type, title, slug, usedByFile, warnings);
       const size = imageSizeForType(type, asset.width && asset.height ? `${asset.width}x${asset.height}` : request.assetResolution);
       const transparentBackground = type === "background" || type === "title-screen"
@@ -1314,20 +1741,21 @@ class AiGameGeneratorService {
     }
 
     if (request.generateImages && normalized.length === 0) {
-      normalized.push(...this.buildFallbackImageAssets(request, title, slug));
+      normalized.push(...this.buildFallbackImageAssets(request, title, slug, config));
     }
 
     const hasPlayer = normalized.some((asset) => asset.type === "sprite" && /player|hero|character/.test(asset.id));
     const hasBackground = normalized.some((asset) => asset.type === "background" || asset.type === "title-screen");
     const hasObject = normalized.some((asset) => asset.type === "sprite" && /enemy|collectible|obstacle|goal|object|item/.test(asset.id));
+    const sourcePath = normalizeReferencePath(config.modelSourcePath, config.sourceRoot, config.sourceExt);
     if (!hasPlayer) {
-      normalized.unshift(this.buildDefaultImageAsset("player_idle", "sprite", "source/main.js", request, title, slug, "A readable game-ready player character sprite"));
+      normalized.unshift(this.buildDefaultImageAsset("player_idle", "sprite", sourcePath, request, title, slug, "A readable game-ready player character sprite"));
     }
     if (!hasBackground) {
-      normalized.push(this.buildDefaultImageAsset("background_level_1", "background", "source/main.js", request, title, slug, "A simple colorful game background with a clean silhouette"));
+      normalized.push(this.buildDefaultImageAsset("background_level_1", "background", sourcePath, request, title, slug, "A simple colorful game background with a clean silhouette"));
     }
     if (!hasObject) {
-      normalized.push(this.buildDefaultImageAsset("collectible_star", "sprite", "source/main.js", request, title, slug, "A small collectible object sprite with a readable silhouette"));
+      normalized.push(this.buildDefaultImageAsset("collectible_star", "sprite", sourcePath, request, title, slug, "A small collectible object sprite with a readable silhouette"));
     }
 
     const seen = new Set();
@@ -1349,7 +1777,8 @@ class AiGameGeneratorService {
     return `${prefix}; ${base}; used in ${usedByFile}; style=${request.imageStyle}; project=${title}`.slice(0, 420);
   }
 
-  buildDefaultImageAsset(id, type, usedByFile, request, title, slug, prompt) {
+  buildDefaultImageAsset(id, type, usedByFile, request, title, slug, prompt, languageConfig = null) {
+    const config = languageConfig || gameLanguageConfig(request.language);
     const size = imageSizeForType(type, request.assetResolution);
     return {
       id,
@@ -1359,21 +1788,22 @@ class AiGameGeneratorService {
       width: size.width,
       height: size.height,
       transparentBackground: type === "background" ? false : request.transparentSprites !== false,
-      usedByFile: normalizeReferencePath(usedByFile),
+      usedByFile: normalizeReferencePath(usedByFile, config.sourceRoot, config.sourceExt),
       accepted: true,
       provider: request.imageProvider,
       style: request.imageStyle
     };
   }
 
-  buildFallbackImageAssets(request, title, slug) {
+  buildFallbackImageAssets(request, title, slug, languageConfig = null) {
+    const config = languageConfig || gameLanguageConfig(request.language);
     return [
-      this.buildDefaultImageAsset("player_idle", "sprite", "source/main.js", request, title, slug, "A readable game-ready player character sprite"),
-      this.buildDefaultImageAsset("enemy_basic", "sprite", "source/main.js", request, title, slug, "A simple enemy sprite with a distinct silhouette"),
-      this.buildDefaultImageAsset("collectible_star", "sprite", "source/main.js", request, title, slug, "A small collectible object sprite with a readable silhouette"),
-      this.buildDefaultImageAsset("background_level_1", "background", "source/main.js", request, title, slug, "A simple colorful game background with a clean silhouette"),
-      this.buildDefaultImageAsset("ui_start_button", "ui", "source/main.js", request, title, slug, "A simple UI start button with a clean game interface look"),
-      this.buildDefaultImageAsset("game_icon", "ui", "source/main.js", request, title, slug, "A clean game icon or thumbnail with a bold silhouette")
+      this.buildDefaultImageAsset("player_idle", "sprite", "source/main.js", request, title, slug, "A readable game-ready player character sprite", config),
+      this.buildDefaultImageAsset("enemy_basic", "sprite", "source/main.js", request, title, slug, "A simple enemy sprite with a distinct silhouette", config),
+      this.buildDefaultImageAsset("collectible_star", "sprite", "source/main.js", request, title, slug, "A small collectible object sprite with a readable silhouette", config),
+      this.buildDefaultImageAsset("background_level_1", "background", "source/main.js", request, title, slug, "A simple colorful game background with a clean silhouette", config),
+      this.buildDefaultImageAsset("ui_start_button", "ui", "source/main.js", request, title, slug, "A simple UI start button with a clean game interface look", config),
+      this.buildDefaultImageAsset("game_icon", "ui", "source/main.js", request, title, slug, "A clean game icon or thumbnail with a bold silhouette", config)
     ];
   }
 
@@ -1485,39 +1915,41 @@ class AiGameGeneratorService {
     });
   }
 
-  sanitizeCodeContent(content, resolvedPhysics, request, warnings, sourcePath) {
+  sanitizeCodeContent(content, resolvedPhysics, request, warnings, sourcePath, languageConfig) {
     const code = typeof content === "string" ? content : "";
+    const config = languageConfig || gameLanguageConfig(request.language);
     if (!code.trim()) {
       return buildFallbackGameCode({
         project: { title: this.fallbackTitle(request.idea), description: request.idea },
         gameDesign: this.validateGameDesign({}, request),
         nextSteps: []
-      }, resolvedPhysics);
+      }, resolvedPhysics, config.language);
     }
     if (isUnsafeCode(code)) {
-      warnings.push(`Unsafe code patterns were replaced in ${sourcePath || "source/main.js"}`);
+      warnings.push(`Unsafe code patterns were replaced in ${sourcePath || config.modelSourcePath}`);
       return buildFallbackGameCode({
         project: { title: this.fallbackTitle(request.idea), description: request.idea },
         gameDesign: this.validateGameDesign({}, request),
         nextSteps: []
-      }, resolvedPhysics);
+      }, resolvedPhysics, config.language);
     }
-    const syntaxProblems = findMicroScriptSyntaxProblems(code);
-    if (syntaxProblems.length > 0) {
-      warnings.push(`Invalid microScript in ${sourcePath || "source/main.js"}; fallback inserted. Problems: ${syntaxProblems.slice(0, 5).join(", ")}`);
+    const validation = validateGeneratedCodeForLanguage(code, config.language);
+    if (!validation.ok) {
+      const label = config.language === "JavaScript" ? "JavaScript" : "microScript";
+      warnings.push(`Invalid ${label} in ${sourcePath || config.modelSourcePath}; fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`);
       return buildFallbackGameCode({
         project: { title: this.fallbackTitle(request.idea), description: request.idea },
         gameDesign: this.validateGameDesign({}, request),
         nextSteps: []
-      }, resolvedPhysics);
+      }, resolvedPhysics, config.language);
     }
-    if (!hasCoreFunctions(code)) {
-      warnings.push(`Missing microScript init/update/draw callbacks in ${sourcePath || "source/main.js"}; fallback starter inserted.`);
+    if (config.language === "microScript" && !hasCoreFunctions(code)) {
+      warnings.push(`Missing microScript init/update/draw callbacks in ${sourcePath || config.modelSourcePath}; fallback starter inserted.`);
       return buildFallbackGameCode({
         project: { title: this.fallbackTitle(request.idea), description: request.idea },
         gameDesign: this.validateGameDesign({}, request),
         nextSteps: []
-      }, resolvedPhysics);
+      }, resolvedPhysics, config.language);
     }
     return code;
   }
@@ -1731,6 +2163,7 @@ class AiGameGeneratorService {
       encoding: file.contentEncoding || file.encoding || "utf8",
       sourcePath: file.sourcePath || file.path,
       preview: file.preview || "",
+      version: file.version != null ? file.version : 0,
       size: Buffer.isBuffer(file.content) ? file.content.length : Buffer.byteLength(String(file.content || ""), "utf8"),
       assetId: file.assetId,
       assetType: file.assetType,
@@ -1771,7 +2204,8 @@ class AiGameGeneratorService {
       previewDataUrl: file.previewDataUrl || null,
       sourcePath: file.sourcePath || file.path,
       size: Buffer.isBuffer(file.content) ? file.content.length : Buffer.byteLength(String(file.content || ""), "utf8"),
-      status: "create"
+      status: "create",
+      version: 0
     }));
 
     const managedPaths = files.map((file) => file.path);
@@ -1782,17 +2216,21 @@ class AiGameGeneratorService {
 
     if (targetProject != null) {
       for (const file of files) {
-        if (targetProject.getFileInfo(file.path) && targetProject.getFileInfo(file.path).version > 0) {
+        const info = targetProject.getFileInfo(file.path);
+        if (info && info.version > 0) {
           file.status = "overwrite";
+          file.version = info.version;
         }
       }
       for (const oldPath of aiManifest) {
         if (managedPaths.indexOf(oldPath) < 0) {
+          const info = targetProject.getFileInfo(oldPath);
           deleted.push({
             path: oldPath,
             type: this.pathType(oldPath),
             status: "delete",
-            sourcePath: oldPath
+            sourcePath: oldPath,
+            version: info && info.version > 0 ? info.version : 0
           });
         }
       }
@@ -1825,6 +2263,7 @@ class AiGameGeneratorService {
       sourcePath: file.sourcePath,
       preview: file.preview || "",
       previewDataUrl: file.previewDataUrl || null,
+      version: file.version != null ? file.version : 0,
       content: file.content != null ? file.content : null,
       contentBase64: file.contentBase64 || null,
       size: file.size || 0,
@@ -1889,7 +2328,8 @@ class AiGameGeneratorService {
     }));
     const asset = Object.assign({}, assets[index]);
     if (typeof input.prompt === "string" && input.prompt.trim().length > 0) {
-      asset.prompt = this.sanitizeImagePrompt(input.prompt, request, asset.type, draft.project && draft.project.title ? draft.project.title : this.fallbackTitle(request.idea), draft.project && draft.project.slug ? draft.project.slug : "", asset.usedByFile || "source/main.js", []);
+      const draftConfig = gameLanguageConfig(draft.request && draft.request.language);
+      asset.prompt = this.sanitizeImagePrompt(input.prompt, request, asset.type, draft.project && draft.project.title ? draft.project.title : this.fallbackTitle(request.idea), draft.project && draft.project.slug ? draft.project.slug : "", asset.usedByFile || draftConfig.modelSourcePath, []);
     }
     if (typeof input.imageStyle === "string") {
       request.imageStyle = normalizeImageStyle(input.imageStyle);
@@ -2028,6 +2468,17 @@ class AiGameGeneratorService {
       }
       if (!project.owner || project.owner.id !== user.id) {
         throw new Error("You must own the target project to apply an AI draft");
+      }
+    }
+
+    const previewVersions = new Map(Array.isArray(draft.preview) ? draft.preview.map((file) => [file.path, file.version != null ? file.version : 0]) : []);
+    if (project) {
+      for (const [path, expectedVersion] of previewVersions.entries()) {
+        const info = project.getFileInfo(path);
+        const currentVersion = info && info.version != null ? info.version : 0;
+        if (currentVersion !== expectedVersion) {
+          throw new Error(`File version conflict for ${path}`);
+        }
       }
     }
 
@@ -2207,6 +2658,7 @@ class AiGameGeneratorService {
   async createProjectFromDraft(user, draft) {
     const title = draft.project && draft.project.title ? draft.project.title : this.fallbackTitle(draft.request && draft.request.idea);
     const slug = slugify(draft.project && draft.project.slug ? draft.project.slug : title);
+    const config = gameLanguageConfig(draft.request && draft.request.language);
     return new Promise((resolve, reject) => {
       this.server.content.createProject(user, {
         title,
@@ -2215,7 +2667,7 @@ class AiGameGeneratorService {
         type: "app",
         orientation: draft.project && draft.project.orientation ? draft.project.orientation : "landscape",
         aspect: normalizeAspectRatio(draft.project && draft.project.aspectRatio ? draft.project.aspectRatio : draft.request && draft.request.aspectRatio),
-        language: "javascript",
+        language: config.projectLanguage,
         graphics: "M1",
         networking: false,
         libs: draft.project && Array.isArray(draft.project.libraries) && draft.project.libraries.includes("matter.js") ? ["matterjs"] : [],
@@ -2241,6 +2693,11 @@ class AiGameGeneratorService {
 module.exports = {
   AiGameGeneratorService,
   shouldUseMatter,
+  normalizeGameLanguage,
   normalizeAspectRatio,
-  slugify
+  slugify,
+  validateGeneratedCodeForLanguage,
+  validateMicroScriptCode,
+  validateJavaScriptCode,
+  gameLanguageConfig
 };

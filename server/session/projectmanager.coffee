@@ -293,10 +293,10 @@ class @ProjectManager
 
     file = "#{@project.owner.id}/#{@project.id}/#{data.file}"
 
-    encoding = if data.file.endsWith(".ms") or data.file.endsWith(".json") or data.file.endsWith(".md") then "text" else "base64"
+    encoding = if data.file.endsWith(".ms") or data.file.endsWith(".js") or data.file.endsWith(".json") or data.file.endsWith(".md") then "text" else "base64"
 
     @project.content.files.read file,encoding,(content)=>
-      out = if data.file.endsWith(".ms") or data.file.endsWith(".json") or data.file.endsWith(".md") then "utf8" else "base64"
+      out = if data.file.endsWith(".ms") or data.file.endsWith(".js") or data.file.endsWith(".json") or data.file.endsWith(".md") then "utf8" else "base64"
 
       if content?
         session.send
@@ -330,7 +330,7 @@ class @ProjectManager
 
         return
 
-    if not /^(ms|sprites|maps|sounds|music|doc|assets|backgrounds|ui)\/[a-z0-9_]{1,40}(-[a-z0-9_]{1,40}){0,10}.(ms|png|json|wav|mp3|ogg|flac|md|glb|obj|jpg|ttf|txt|csv|wasm)$/.test(data.file)
+    if not /^(ms|js|sprites|maps|sounds|music|doc|assets|backgrounds|ui)\/[a-z0-9_]{1,40}(-[a-z0-9_]{1,40}){0,10}.(ms|js|png|json|wav|mp3|ogg|flac|md|glb|obj|jpg|ttf|txt|csv|wasm)$/.test(data.file)
       console.info "wrong file name: #{data.file}"
       return
 
@@ -342,7 +342,7 @@ class @ProjectManager
     file = "#{@project.owner.id}/#{@project.id}/#{data.file}"
 
     if data.content?
-      if data.file.split(".")[1] in ["ms","json","md","txt","csv"]
+      if data.file.split(".")[1] in ["ms","js","json","md","txt","csv"]
         content = data.content
       else
         content = new Buffer(data.content,"base64")
@@ -379,11 +379,11 @@ class @ProjectManager
     return if typeof data.dest != "string"
     return if data.dest.length>250
 
-    if not /^(ms|sprites|maps|sounds|music|doc|assets|backgrounds|ui)\/[a-z0-9_]{1,40}(-[a-z0-9_]{1,40}){0,10}.(ms|png|json|wav|mp3|ogg|flac|md|glb|obj|jpg|ttf|txt|csv|wasm)$/.test(data.source)
+    if not /^(ms|js|sprites|maps|sounds|music|doc|assets|backgrounds|ui)\/[a-z0-9_]{1,40}(-[a-z0-9_]{1,40}){0,10}.(ms|js|png|json|wav|mp3|ogg|flac|md|glb|obj|jpg|ttf|txt|csv|wasm)$/.test(data.source)
       console.info "wrong source name: #{data.source}"
       return
 
-    if not /^(ms|sprites|maps|sounds|music|doc|assets|backgrounds|ui)\/[a-z0-9_]{1,40}(-[a-z0-9_]{1,40}){0,10}.(ms|png|json|wav|mp3|ogg|flac|md|glb|obj|jpg|ttf|txt|csv|wasm)$/.test(data.dest)
+    if not /^(ms|js|sprites|maps|sounds|music|doc|assets|backgrounds|ui)\/[a-z0-9_]{1,40}(-[a-z0-9_]{1,40}){0,10}.(ms|js|png|json|wav|mp3|ogg|flac|md|glb|obj|jpg|ttf|txt|csv|wasm)$/.test(data.dest)
       console.info "wrong dest name: #{data.dest}"
       return
 
@@ -452,6 +452,8 @@ class @ProjectManager
       @project.content.files.delete f,()=>
 
   importFiles:(contents,callback)=>
+    sourceRoot = if String(@project.language or "").toLowerCase() == "javascript" then "js" else "ms"
+    sourceExt = if sourceRoot == "js" then "js" else "ms"
     files = []
     for filename of contents.files
       files.push filename
@@ -461,7 +463,7 @@ class @ProjectManager
         filename = files.splice(0,1)[0]
         value = contents.files[filename]
 
-        if /^(ms|sprites|maps|sounds|music|doc|assets|backgrounds|ui|sounds_th|music_th|assets_th)\/[a-z0-9_]{1,40}([-\/][a-z0-9_]{1,40}){0,10}.(ms|py|js|lua|png|json|wav|mp3|ogg|flac|md|glb|obj|jpg|ttf|txt|csv|wasm)$/.test(filename)
+        if /^(ms|js|sprites|maps|sounds|music|doc|assets|backgrounds|ui|sounds_th|music_th|assets_th)\/[a-z0-9_]{1,40}([-\/][a-z0-9_]{1,40}){0,10}.(ms|py|js|lua|png|json|wav|mp3|ogg|flac|md|glb|obj|jpg|ttf|txt|csv|wasm)$/.test(filename)
           dest = filename
           d = dest.split("/")
           while d.length>2
@@ -469,10 +471,10 @@ class @ProjectManager
             d[d.length-1] += "-#{end}"
             dest = d.join("/")
 
-          if dest.endsWith ".js" then dest = dest.replace(".js",".ms")
-          if dest.endsWith ".py" then dest = dest.replace(".py",".ms")
-          if dest.endsWith ".lua" then dest = dest.replace(".lua",".ms")
-          type = if dest.split(".")[1] in ["ms","json","md","txt","csv"] then "string" else "nodebuffer"
+          if dest.endsWith ".js" then dest = dest.replace(/\.js$/, ".#{sourceExt}")
+          if dest.endsWith ".py" then dest = dest.replace(/\.py$/, ".#{sourceExt}")
+          if dest.endsWith ".lua" then dest = dest.replace(/\.lua$/, ".#{sourceExt}")
+          type = if dest.split(".")[1] in ["ms","js","json","md","txt","csv"] then "string" else "nodebuffer"
           try
             contents.file(filename).async(type).then ((fileContent)=>
               if fileContent?

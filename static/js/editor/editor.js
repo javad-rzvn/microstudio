@@ -218,7 +218,7 @@ this.Editor = class Editor extends Manager {
     this.save_time = Date.now();
     this.app.project.addPendingChange(this);
     if (this.selected_source != null) {
-      this.app.project.lockFile(`ms/${this.selected_source}.ms`);
+      this.app.project.lockFile(this.app.project.sourcePath(this.selected_source));
       source = this.app.project.getSource(this.selected_source);
       if (source != null) {
         source.content = this.getCode();
@@ -237,10 +237,10 @@ this.Editor = class Editor extends Manager {
         parser = new this.language.parser(this.editor.getValue());
         p = parser.parse();
         if (parser.error_info == null) {
-          return this.app.runwindow.updateCode(this.selected_source + ".ms", this.getCode());
+          return this.app.runwindow.updateCode(this.selected_source + "." + this.app.project.sourceExtension(), this.getCode());
         }
       } else {
-        return this.app.runwindow.updateCode(this.selected_source + ".ms", this.getCode());
+        return this.app.runwindow.updateCode(this.selected_source + "." + this.app.project.sourceExtension(), this.getCode());
       }
     }
   }
@@ -274,7 +274,7 @@ this.Editor = class Editor extends Manager {
     this.app.client.sendRequest({
       name: "write_project_file",
       project: this.app.project.id,
-      file: `ms/${this.selected_source}.ms`,
+      file: this.app.project.sourcePath(this.selected_source),
       characters: keycount,
       lines: lines,
       content: this.getCode()
@@ -769,9 +769,9 @@ this.Editor = class Editor extends Manager {
     var lock, source, user;
     lock = document.getElementById("editor-locked");
     if (this.selected_source != null) {
-      if (this.app.project.isLocked(`ms/${this.selected_source}.ms`)) {
+      if (this.app.project.isLocked(this.app.project.sourcePath(this.selected_source))) {
         this.editor.setReadOnly(true);
-        user = this.app.project.isLocked(`ms/${this.selected_source}.ms`).user;
+        user = this.app.project.isLocked(this.app.project.sourcePath(this.selected_source)).user;
         return this.showLock(`<i class='fa fa-user'></i> Locked by ${user}`, this.app.appui.createFriendColor(user));
       } else {
         source = this.app.project.getSource(this.selected_source);
@@ -856,7 +856,7 @@ this.Editor = class Editor extends Manager {
     return this.app.client.sendRequest({
       name: "write_project_file",
       project: this.app.project.id,
-      file: `ms/${name}.ms`,
+      file: this.app.project.sourcePath(name),
       properties: {},
       content: content
     }, (msg) => {

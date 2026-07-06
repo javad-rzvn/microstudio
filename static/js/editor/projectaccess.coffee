@@ -257,7 +257,7 @@ class @ProjectAccess
     switch kind
       when "source"
         path.splice(0,1)
-        path = "ms/"+path.join("/")
+        path = @app.project.sourcePath path.join("/")
         @app.project.writeFile(path,msg.content)
         @app.appui.bumpElement "#menuitem-code"
 

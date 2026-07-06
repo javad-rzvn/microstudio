@@ -6,6 +6,8 @@ this.Player = class Player {
     this.source_count = 0;
     this.sources = {};
     this.resources = resources;
+    this.source_root = resources.sourceRoot || "ms";
+    this.source_ext = resources.sourceExtension || (this.source_root === "js" ? "js" : "ms");
     this.request_id = 1;
     this.pending_requests = {};
     if (resources.sources != null) {
@@ -36,7 +38,7 @@ this.Player = class Player {
         }
       }
     };
-    req.open("GET", location.origin + location.pathname + `ms/${source.file}?v=${source.version}`);
+    req.open("GET", location.origin + location.pathname + `${this.source_root}/${source.file}?v=${source.version}`);
     return req.send();
   }
 

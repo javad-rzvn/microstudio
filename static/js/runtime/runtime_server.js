@@ -4,6 +4,8 @@ this.Runtime = class Runtime {
     this.sources = sources;
     this.resources = resources;
     this.listener = listener;
+    this.source_root = resources.sourceRoot || "ms";
+    this.source_ext = resources.sourceExtension || (this.source_root === "js" ? "js" : "ms");
     this.sprites = {};
     this.maps = {};
     this.sounds = {};
@@ -246,6 +248,7 @@ this.Runtime = class Runtime {
       case "maps":
         return this.updateMap(file, version, data);
       case "ms":
+      case "js":
         return this.updateCode(file, version, data);
     }
   }
@@ -294,7 +297,7 @@ this.Runtime = class Runtime {
       }
       return this.updateSource(name, data, true);
     } else {
-      url = this.url + `ms/${name}.ms?v=${version}`;
+      url = this.url + `${this.source_root}/${name}.${this.source_ext}?v=${version}`;
       req = new XMLHttpRequest();
       req.onreadystatechange = (event) => {
         if (req.readyState === XMLHttpRequest.DONE) {

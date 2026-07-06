@@ -445,10 +445,10 @@ this.ProjectManager = class ProjectManager {
       return;
     }
     file = `${this.project.owner.id}/${this.project.id}/${data.file}`;
-    encoding = data.file.endsWith(".ms") || data.file.endsWith(".json") || data.file.endsWith(".md") ? "text" : "base64";
+    encoding = data.file.endsWith(".ms") || data.file.endsWith(".js") || data.file.endsWith(".json") || data.file.endsWith(".md") ? "text" : "base64";
     return this.project.content.files.read(file, encoding, (content) => {
       var out;
-      out = data.file.endsWith(".ms") || data.file.endsWith(".json") || data.file.endsWith(".md") ? "utf8" : "base64";
+      out = data.file.endsWith(".ms") || data.file.endsWith(".js") || data.file.endsWith(".json") || data.file.endsWith(".md") ? "utf8" : "base64";
       if (content != null) {
         return session.send({
           name: "read_project_file",
@@ -492,7 +492,7 @@ this.ProjectManager = class ProjectManager {
         return;
       }
     }
-    if (!/^(ms|sprites|maps|sounds|music|doc|assets|backgrounds|ui)\/[a-z0-9_]{1,40}(-[a-z0-9_]{1,40}){0,10}.(ms|png|json|wav|mp3|ogg|flac|md|glb|obj|jpg|ttf|txt|csv|wasm)$/.test(data.file)) {
+    if (!/^(ms|js|sprites|maps|sounds|music|doc|assets|backgrounds|ui)\/[a-z0-9_]{1,40}(-[a-z0-9_]{1,40}){0,10}.(ms|js|png|json|wav|mp3|ogg|flac|md|glb|obj|jpg|ttf|txt|csv|wasm)$/.test(data.file)) {
       console.info(`wrong file name: ${data.file}`);
       return;
     }
@@ -504,7 +504,7 @@ this.ProjectManager = class ProjectManager {
     }
     file = `${this.project.owner.id}/${this.project.id}/${data.file}`;
     if (data.content != null) {
-      if ((ref = data.file.split(".")[1]) === "ms" || ref === "json" || ref === "md" || ref === "txt" || ref === "csv") {
+      if ((ref = data.file.split(".")[1]) === "ms" || ref === "js" || ref === "json" || ref === "md" || ref === "txt" || ref === "csv") {
         content = data.content;
       } else {
         content = new Buffer(data.content, "base64");
@@ -554,11 +554,11 @@ this.ProjectManager = class ProjectManager {
     if (data.dest.length > 250) {
       return;
     }
-    if (!/^(ms|sprites|maps|sounds|music|doc|assets|backgrounds|ui)\/[a-z0-9_]{1,40}(-[a-z0-9_]{1,40}){0,10}.(ms|png|json|wav|mp3|ogg|flac|md|glb|obj|jpg|ttf|txt|csv|wasm)$/.test(data.source)) {
+    if (!/^(ms|js|sprites|maps|sounds|music|doc|assets|backgrounds|ui)\/[a-z0-9_]{1,40}(-[a-z0-9_]{1,40}){0,10}.(ms|js|png|json|wav|mp3|ogg|flac|md|glb|obj|jpg|ttf|txt|csv|wasm)$/.test(data.source)) {
       console.info(`wrong source name: ${data.source}`);
       return;
     }
-    if (!/^(ms|sprites|maps|sounds|music|doc|assets|backgrounds|ui)\/[a-z0-9_]{1,40}(-[a-z0-9_]{1,40}){0,10}.(ms|png|json|wav|mp3|ogg|flac|md|glb|obj|jpg|ttf|txt|csv|wasm)$/.test(data.dest)) {
+    if (!/^(ms|js|sprites|maps|sounds|music|doc|assets|backgrounds|ui)\/[a-z0-9_]{1,40}(-[a-z0-9_]{1,40}){0,10}.(ms|js|png|json|wav|mp3|ogg|flac|md|glb|obj|jpg|ttf|txt|csv|wasm)$/.test(data.dest)) {
       console.info(`wrong dest name: ${data.dest}`);
       return;
     }
@@ -641,6 +641,9 @@ this.ProjectManager = class ProjectManager {
 
   importFiles(contents, callback) {
     var filename, files, funk;
+    var sourceExt, sourceRoot;
+    sourceRoot = String(this.project.language || "").toLowerCase() === "javascript" ? "js" : "ms";
+    sourceExt = sourceRoot === "js" ? "js" : "ms";
     files = [];
     for (filename in contents.files) {
       files.push(filename);
@@ -650,7 +653,7 @@ this.ProjectManager = class ProjectManager {
       if (files.length > 0) {
         filename = files.splice(0, 1)[0];
         value = contents.files[filename];
-        if (/^(ms|sprites|maps|sounds|music|doc|assets|backgrounds|ui|sounds_th|music_th|assets_th)\/[a-z0-9_]{1,40}([-\/][a-z0-9_]{1,40}){0,10}.(ms|py|js|lua|png|json|wav|mp3|ogg|flac|md|glb|obj|jpg|ttf|txt|csv|wasm)$/.test(filename)) {
+        if (/^(ms|js|sprites|maps|sounds|music|doc|assets|backgrounds|ui|sounds_th|music_th|assets_th)\/[a-z0-9_]{1,40}([-\/][a-z0-9_]{1,40}){0,10}.(ms|py|js|lua|png|json|wav|mp3|ogg|flac|md|glb|obj|jpg|ttf|txt|csv|wasm)$/.test(filename)) {
           dest = filename;
           d = dest.split("/");
           while (d.length > 2) {
@@ -659,15 +662,15 @@ this.ProjectManager = class ProjectManager {
             dest = d.join("/");
           }
           if (dest.endsWith(".js")) {
-            dest = dest.replace(".js", ".ms");
+            dest = dest.replace(/\.js$/, `.${sourceExt}`);
           }
           if (dest.endsWith(".py")) {
-            dest = dest.replace(".py", ".ms");
+            dest = dest.replace(/\.py$/, `.${sourceExt}`);
           }
           if (dest.endsWith(".lua")) {
-            dest = dest.replace(".lua", ".ms");
+            dest = dest.replace(/\.lua$/, `.${sourceExt}`);
           }
-          type = (ref = dest.split(".")[1]) === "ms" || ref === "json" || ref === "md" || ref === "txt" || ref === "csv" ? "string" : "nodebuffer";
+          type = (ref = dest.split(".")[1]) === "ms" || ref === "js" || ref === "json" || ref === "md" || ref === "txt" || ref === "csv" ? "string" : "nodebuffer";
           try {
             return contents.file(filename).async(type).then(((fileContent) => {
               if (fileContent != null) {
