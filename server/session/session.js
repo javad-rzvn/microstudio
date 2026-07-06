@@ -827,7 +827,7 @@ this.Session = class Session {
         clone.set("libraries", project.libraries);
         clone.set("files", JSON.parse(JSON.stringify(project.files)));
         man = this.getProjectManager(project);
-        folders = ["ms", "sprites", "maps", "sounds", "sounds_th", "music", "music_th", "assets", "assets_th", "doc"];
+        folders = ["ms", "sprites", "maps", "sounds", "sounds_th", "music", "music_th", "assets", "assets_th", "backgrounds", "ui", "doc"];
         files = [];
         funk = () => {
           var dest, f, folder, src;
@@ -897,7 +897,7 @@ this.Session = class Session {
           clone.set("libraries", project.libraries);
           clone.set("files", JSON.parse(JSON.stringify(project.files)));
           man = this.getProjectManager(project);
-          folders = ["ms", "sprites", "maps", "sounds", "sounds_th", "music", "music_th", "assets", "assets_th", "doc"];
+          folders = ["ms", "sprites", "maps", "sounds", "sounds_th", "music", "music_th", "assets", "assets_th", "backgrounds", "ui", "doc"];
           files = [];
           funk = () => {
             var dest, f, folder, src;

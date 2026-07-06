@@ -1,9 +1,18 @@
 const crypto = require("crypto");
 const Jimp = require("jimp");
 const { OpenAIProvider } = require("./provider_openai.js");
+const {
+  PlaceholderImageProvider,
+  OpenAIImageProvider,
+  ComfyUIProvider
+} = require("./image_providers.js");
 
-const ALLOWED_ROOTS = new Set(["source", "sprites", "maps", "assets", "sounds", "music", "doc"]);
+const ALLOWED_ROOTS = new Set(["source", "sprites", "maps", "assets", "sounds", "music", "doc", "backgrounds", "ui"]);
 const ALLOWED_EXTENSIONS = new Set(["js", "json", "md", "txt"]);
+const ALLOWED_IMAGE_EXTENSIONS = new Set(["png", "webp"]);
+const ALLOWED_IMAGE_PROVIDERS = new Set(["openai", "comfyui", "placeholder"]);
+const ALLOWED_IMAGE_STYLES = new Set(["pixel-art", "cartoon", "flat-vector", "simple-shapes", "hand-drawn", "fantasy", "sci-fi"]);
+const ALLOWED_IMAGE_TYPES = new Set(["sprite", "background", "collectible", "obstacle", "goal", "ui", "button", "icon", "thumbnail", "title-screen", "tile", "texture", "tile-texture"]);
 const DANGEROUS_CODE_PATTERNS = [
   /(^|[^\w])eval\s*\(/i,
   /(^|[^\w])Function\s*\(/i,
@@ -91,6 +100,114 @@ function normalizeAspectRatio(value) {
     default:
       return "free";
   }
+}
+
+function normalizeImageProvider(value) {
+  return ALLOWED_IMAGE_PROVIDERS.has(value) ? value : "placeholder";
+}
+
+function normalizeImageStyle(value) {
+  return ALLOWED_IMAGE_STYLES.has(value) ? value : "pixel-art";
+}
+
+function normalizeAssetResolution(value) {
+  return ["32x32", "64x64", "128x128", "512x512"].includes(value) ? value : "64x64";
+}
+
+function clampImageDimension(value, fallback, min = 16, max = 2048) {
+  const n = Number.isFinite(value) ? Math.floor(value) : fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+function imageSizeForType(type, resolution) {
+  const [w, h] = normalizeAssetResolution(resolution).split("x").map((n) => parseInt(n, 10));
+  if (type === "background" || type === "title-screen") {
+    return {
+      width: Math.max(w * 4, 512),
+      height: Math.max(h * 3, 512)
+    };
+  }
+  if (type === "ui" || type === "button" || type === "icon" || type === "thumbnail") {
+    return {
+      width: Math.max(w * 2, 128),
+      height: Math.max(h * 2, 128)
+    };
+  }
+  if (type === "tile" || type === "texture" || type === "tile-texture") {
+    return {
+      width: Math.max(w * 2, 128),
+      height: Math.max(h * 2, 128)
+    };
+  }
+  return {
+    width: w,
+    height: h
+  };
+}
+
+function normalizeImageType(value) {
+  if (!ALLOWED_IMAGE_TYPES.has(value)) {
+    return "sprite";
+  }
+  if (value === "button" || value === "icon" || value === "thumbnail") {
+    return "ui";
+  }
+  if (value === "tile-texture") {
+    return "tile";
+  }
+  return value;
+}
+
+function imageRootForType(type) {
+  switch (normalizeImageType(type)) {
+    case "background":
+    case "title-screen":
+      return "backgrounds";
+    case "ui":
+      return "ui";
+    case "tile":
+    case "texture":
+      return "assets";
+    default:
+      return "sprites";
+  }
+}
+
+function normalizeImageFilename(asset, type, index) {
+  const root = imageRootForType(type);
+  const id = sanitizeSegment(asset && (asset.id || asset.name) ? (asset.id || asset.name) : `asset-${index + 1}`);
+  return `${root}/${id}.png`;
+}
+
+function normalizeReferencePath(path) {
+  const cleaned = String(path || "")
+    .replace(/\\/g, "/")
+    .trim();
+  if (!cleaned) {
+    return "source/main.js";
+  }
+  if (cleaned.startsWith("source/")) {
+    return cleaned.replace(/^source\//, "ms/").replace(/\.js$/i, ".ms");
+  }
+  if (cleaned.startsWith("ms/")) {
+    return cleaned;
+  }
+  if (cleaned.startsWith("doc/")) {
+    return cleaned;
+  }
+  return cleaned;
+}
+
+function imagePromptPrefix(request) {
+  const parts = [
+    `Consistent ${request.imageStyle || "pixel-art"} game asset`,
+    request.transparentSprites ? "transparent background when appropriate" : "solid background when appropriate",
+    "no text",
+    "no logos",
+    "no copyrighted characters",
+    "readable silhouette"
+  ];
+  return parts.join(", ");
 }
 
 function normalizeOrientation(value) {
@@ -213,6 +330,19 @@ function buildFallbackDoc(plan, generatedFiles) {
   return lines.join("\n");
 }
 
+function buildGeneratedAssetManifest(imageAssets) {
+  const lines = [
+    "// Generated image asset manifest.",
+    "// Reference these paths from your game code.",
+    "var GENERATED_IMAGE_ASSETS = {"
+  ];
+  for (const asset of (Array.isArray(imageAssets) ? imageAssets : []).slice(0, 32)) {
+    lines.push(`  ${JSON.stringify(asset.id)}: ${JSON.stringify(asset.filename)},`);
+  }
+  lines.push("};", "");
+  return lines.join("\n");
+}
+
 function buildFallbackGameCode(plan, resolvedPhysics) {
   const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
   const description = JSON.stringify((plan.project && plan.project.description) || "");
@@ -239,6 +369,11 @@ class AiGameGeneratorService {
     this.provider = new OpenAIProvider();
     this.draftTable = "ai_game_drafts";
     this.backupTable = "ai_game_backups";
+    this.imageProviders = {
+      openai: () => new OpenAIImageProvider(),
+      comfyui: () => new ComfyUIProvider(),
+      placeholder: () => new PlaceholderImageProvider()
+    };
   }
 
   get db() {
@@ -309,11 +444,16 @@ class AiGameGeneratorService {
       difficulty: ["beginner", "intermediate", "advanced"].includes(input.difficulty) ? input.difficulty : "beginner",
       artStyle: ["placeholder", "pixel-art", "simple-shapes"].includes(input.artStyle) ? input.artStyle : "placeholder",
       aspectRatio: ["16:9", "4:3", "1:1", "portrait"].includes(input.aspectRatio) ? input.aspectRatio : "16:9",
+      generateImages: input.generateImages === true,
+      imageProvider: normalizeImageProvider(typeof input.imageProvider === "string" ? input.imageProvider : "placeholder"),
+      imageStyle: normalizeImageStyle(typeof input.imageStyle === "string" ? input.imageStyle : "pixel-art"),
+      transparentSprites: input.transparentSprites !== false,
+      assetResolution: normalizeAssetResolution(typeof input.assetResolution === "string" ? input.assetResolution : "64x64"),
       targetProjectId: input.targetProjectId != null ? String(input.targetProjectId) : null,
       mode: normalizeMode(input.mode),
       constraints: {
-        maxFiles: Number.isInteger(input.constraints && input.constraints.maxFiles) ? input.constraints.maxFiles : 20,
-        maxFileSizeKb: Number.isInteger(input.constraints && input.constraints.maxFileSizeKb) ? input.constraints.maxFileSizeKb : 120,
+        maxFiles: Number.isInteger(input.constraints && input.constraints.maxFiles) ? input.constraints.maxFiles : 32,
+        maxFileSizeKb: Number.isInteger(input.constraints && input.constraints.maxFileSizeKb) ? input.constraints.maxFileSizeKb : 256,
         includeDocs: input.constraints && input.constraints.includeDocs !== false,
         includeTutorialComments: input.constraints && input.constraints.includeTutorialComments !== false
       }
@@ -339,6 +479,9 @@ class AiGameGeneratorService {
       resolvedPhysics ? "Matter.js is enabled for this request." : "Do not use Matter.js unless the game concept explicitly needs it.",
       "Use source/*.js for code file entries and doc/*.md or doc/*.txt for docs.",
       "Put sprite and map metadata in the sprites and maps arrays instead of file entries.",
+      request.generateImages ? "Include an imageAssets array with short, specific game-asset prompts, stable ids, normalized filenames, and usedByFile values." : "Do not include imageAssets unless the user explicitly enabled image generation.",
+      request.generateImages ? `Use the image style ${request.imageStyle} and keep prompts consistent across all assets.` : "",
+      request.generateImages ? `Sprites should request transparent backgrounds when possible. Backgrounds should remain opaque.` : "",
       "The generated project must have init, update, and draw functions, controls explanation, and restart logic.",
       "Beginner difficulty should include comments explaining the code."
     ].join(" ");
@@ -350,6 +493,11 @@ class AiGameGeneratorService {
       `Difficulty: ${request.difficulty}`,
       `Art style: ${request.artStyle}`,
       `Aspect ratio: ${request.aspectRatio}`,
+      `Generate images: ${request.generateImages}`,
+      `Image provider: ${request.imageProvider}`,
+      `Image style: ${request.imageStyle}`,
+      `Transparent sprites: ${request.transparentSprites}`,
+      `Asset resolution: ${request.assetResolution}`,
       `Mode: ${request.mode}`,
       `Constraints: maxFiles=${request.constraints.maxFiles}, maxFileSizeKb=${request.constraints.maxFileSizeKb}, includeDocs=${request.constraints.includeDocs}, includeTutorialComments=${request.constraints.includeTutorialComments}`,
       "Return this exact shape:",
@@ -409,6 +557,18 @@ class AiGameGeneratorService {
             description: "string"
           }
         ],
+        imageAssets: [
+          {
+            id: "player_idle",
+            type: "sprite",
+            filename: "sprites/player_idle.png",
+            prompt: "A small game-ready character sprite",
+            width: 64,
+            height: 64,
+            transparentBackground: true,
+            usedByFile: "source/main.js"
+          }
+        ],
         warnings: ["string"],
         nextSteps: ["string"]
       }, null, 2)
@@ -458,11 +618,19 @@ class AiGameGeneratorService {
     const libraries = resolvedPhysics ? ["matter.js"] : [];
     const gameDesign = this.validateGameDesign(projectJson.gameDesign, request);
     const filesResult = await this.sanitizeGeneratedFiles(projectJson.files, request, resolvedPhysics, warnings);
-    const spriteFiles = await this.createSpriteFiles(projectJson.sprites, request, warnings, title, slug);
+    const imageAssets = request.generateImages
+      ? await this.validateGeneratedImageAssets(projectJson.imageAssets, request, warnings, title, slug, user)
+      : [];
+    const imageFiles = request.generateImages
+      ? await this.generateImageAssetFiles(imageAssets, request, warnings, title, slug, user)
+      : [];
+    const spriteFiles = request.generateImages
+      ? []
+      : await this.createSpriteFiles(projectJson.sprites, request, warnings, title, slug);
     const mapFiles = await this.createMapFiles(projectJson.maps, request, warnings, title, slug);
-    const scaffoldFiles = await this.createScaffoldFiles(request, warnings, title, slug, resolvedPhysics, spriteFiles.length === 0, mapFiles.length === 0);
+    const scaffoldFiles = await this.createScaffoldFiles(request, warnings, title, slug, resolvedPhysics, spriteFiles.length === 0 && imageFiles.length === 0, mapFiles.length === 0);
 
-    let files = [...filesResult.files, ...spriteFiles, ...mapFiles, ...scaffoldFiles];
+    let files = [...filesResult.files, ...spriteFiles, ...imageFiles, ...mapFiles, ...scaffoldFiles];
     files = uniqueByPath(files);
 
     if (files.length > request.constraints.maxFiles) {
@@ -514,6 +682,7 @@ class AiGameGeneratorService {
       },
       gameDesign,
       files,
+      imageAssets,
       warnings,
       nextSteps,
       resolvedPhysicsMode: resolvedPhysics ? "matterjs" : "manual",
@@ -523,7 +692,9 @@ class AiGameGeneratorService {
     };
 
     if (!files.some((file) => file.path === "sprites/icon.png")) {
-      normalized.files.unshift(await this.createIconFile(title, slug));
+      if (!request.generateImages || !normalized.imageAssets.some((asset) => asset.type === "ui" && /icon|thumbnail/.test(asset.id || ""))) {
+        normalized.files.unshift(await this.createIconFile(title, slug));
+      }
     }
 
     if (!normalized.files.some((file) => file.path === "maps/level1.json")) {
@@ -562,6 +733,15 @@ class AiGameGeneratorService {
 
     if (normalized.files.length > request.constraints.maxFiles) {
       throw new Error(`Generated project contains too many files (${normalized.files.length} > ${request.constraints.maxFiles})`);
+    }
+
+    if (request.generateImages && normalized.imageAssets.length > 0) {
+      const manifest = buildGeneratedAssetManifest(normalized.imageAssets);
+      const mainFile = normalized.files.find((file) => file.path === "ms/main.ms" && typeof file.content === "string");
+      if (mainFile != null && !mainFile.content.includes("GENERATED_IMAGE_ASSETS")) {
+        mainFile.content = `${manifest}${mainFile.content}`;
+        mainFile.preview = mainFile.content.slice(0, 2000);
+      }
     }
 
     return normalized;
@@ -664,6 +844,208 @@ class AiGameGeneratorService {
       warnings.push("Model did not provide a usable source file; a safe starter main file will be inserted.");
     }
     return { files: safeFiles, codeFileCount };
+  }
+
+  validateGeneratedImageAssets(imageAssets, request, warnings, title, slug, user) {
+    const source = Array.isArray(imageAssets) ? imageAssets.slice(0, 16) : [];
+    const normalized = [];
+    let index = 0;
+    for (const asset of source) {
+      if (!asset || typeof asset !== "object") {
+        continue;
+      }
+      const type = normalizeImageType(typeof asset.type === "string" ? asset.type : "sprite");
+      const filename = normalizeImageFilename(asset, type, index);
+      const usedByFile = normalizeReferencePath(asset.usedByFile || "source/main.js");
+      const prompt = this.sanitizeImagePrompt(asset.prompt, request, type, title, slug, usedByFile, warnings);
+      const size = imageSizeForType(type, asset.width && asset.height ? `${asset.width}x${asset.height}` : request.assetResolution);
+      const transparentBackground = type === "background" || type === "title-screen"
+        ? false
+        : asset.transparentBackground !== false && request.transparentSprites !== false;
+      const width = clampImageDimension(asset.width, size.width, 16, 2048);
+      const height = clampImageDimension(asset.height, size.height, 16, 2048);
+      normalized.push({
+        id: sanitizeSegment(asset.id || asset.name || `asset-${index + 1}`),
+        type,
+        filename,
+        prompt,
+        width,
+        height,
+        transparentBackground,
+        usedByFile,
+        accepted: asset.accepted !== false,
+        sourcePrompt: typeof asset.prompt === "string" ? asset.prompt.trim().slice(0, 500) : "",
+        provider: request.imageProvider,
+        style: request.imageStyle
+      });
+      index += 1;
+    }
+
+    if (request.generateImages && normalized.length === 0) {
+      normalized.push(...this.buildFallbackImageAssets(request, title, slug));
+    }
+
+    const hasPlayer = normalized.some((asset) => asset.type === "sprite" && /player|hero|character/.test(asset.id));
+    const hasBackground = normalized.some((asset) => asset.type === "background" || asset.type === "title-screen");
+    const hasObject = normalized.some((asset) => asset.type === "sprite" && /enemy|collectible|obstacle|goal|object|item/.test(asset.id));
+    if (!hasPlayer) {
+      normalized.unshift(this.buildDefaultImageAsset("player_idle", "sprite", "source/main.js", request, title, slug, "A readable game-ready player character sprite"));
+    }
+    if (!hasBackground) {
+      normalized.push(this.buildDefaultImageAsset("background_level_1", "background", "source/main.js", request, title, slug, "A simple colorful game background with a clean silhouette"));
+    }
+    if (!hasObject) {
+      normalized.push(this.buildDefaultImageAsset("collectible_star", "sprite", "source/main.js", request, title, slug, "A small collectible object sprite with a readable silhouette"));
+    }
+
+    const seen = new Set();
+    const deduped = [];
+    for (const asset of normalized) {
+      if (!seen.has(asset.filename)) {
+        seen.add(asset.filename);
+        deduped.push(asset);
+      }
+    }
+    return deduped.slice(0, 16);
+  }
+
+  sanitizeImagePrompt(prompt, request, type, title, slug, usedByFile, warnings) {
+    const safe = typeof prompt === "string" ? prompt.trim().replace(/\s+/g, " ") : "";
+    const prefix = imagePromptPrefix(request);
+    const typeLabel = type === "background" ? "background" : type === "ui" ? "ui element" : "sprite";
+    const base = safe.length > 0 ? safe : `A simple ${typeLabel} for ${title}`;
+    return `${prefix}; ${base}; used in ${usedByFile}; style=${request.imageStyle}; project=${title}`.slice(0, 420);
+  }
+
+  buildDefaultImageAsset(id, type, usedByFile, request, title, slug, prompt) {
+    const size = imageSizeForType(type, request.assetResolution);
+    return {
+      id,
+      type,
+      filename: normalizeImageFilename({ id }, type, 0),
+      prompt: this.sanitizeImagePrompt(prompt, request, type, title, slug, usedByFile, []),
+      width: size.width,
+      height: size.height,
+      transparentBackground: type === "background" ? false : request.transparentSprites !== false,
+      usedByFile: normalizeReferencePath(usedByFile),
+      accepted: true,
+      provider: request.imageProvider,
+      style: request.imageStyle
+    };
+  }
+
+  buildFallbackImageAssets(request, title, slug) {
+    return [
+      this.buildDefaultImageAsset("player_idle", "sprite", "source/main.js", request, title, slug, "A readable game-ready player character sprite"),
+      this.buildDefaultImageAsset("enemy_basic", "sprite", "source/main.js", request, title, slug, "A simple enemy sprite with a distinct silhouette"),
+      this.buildDefaultImageAsset("collectible_star", "sprite", "source/main.js", request, title, slug, "A small collectible object sprite with a readable silhouette"),
+      this.buildDefaultImageAsset("background_level_1", "background", "source/main.js", request, title, slug, "A simple colorful game background with a clean silhouette"),
+      this.buildDefaultImageAsset("ui_start_button", "ui", "source/main.js", request, title, slug, "A simple UI start button with a clean game interface look"),
+      this.buildDefaultImageAsset("game_icon", "ui", "source/main.js", request, title, slug, "A clean game icon or thumbnail with a bold silhouette")
+    ];
+  }
+
+  async generateImageAssetFiles(imageAssets, request, warnings, title, slug, user) {
+    const items = [];
+    const provider = this.getImageProvider(request.imageProvider);
+    const assetsList = Array.isArray(imageAssets) ? imageAssets : [];
+    for (const asset of assetsList) {
+      const rendered = await this.renderImageAsset(provider, asset, request, warnings, title, slug, user);
+      items.push(rendered);
+    }
+
+    const iconAsset = assetsList.find((asset) => asset.type === "ui" && /icon|thumbnail/.test(asset.id));
+    if (iconAsset) {
+      const iconFile = items.find((item) => item.assetId === iconAsset.id);
+      if (iconFile != null && iconFile.path !== "sprites/icon.png") {
+        items.push(Object.assign({}, iconFile, {
+          path: "sprites/icon.png",
+          sourcePath: `${iconFile.path} (alias)`,
+          preview: "project icon alias"
+        }));
+      }
+    }
+
+    const posterAsset = assetsList.find((asset) => asset.type === "background" || asset.type === "title-screen");
+    if (posterAsset) {
+      const posterFile = items.find((item) => item.assetId === posterAsset.id);
+      if (posterFile != null && posterFile.path !== "sprites/poster.png") {
+        items.push(Object.assign({}, posterFile, {
+          path: "sprites/poster.png",
+          sourcePath: `${posterFile.path} (alias)`,
+          preview: "poster alias"
+        }));
+      }
+    }
+
+    return uniqueByPath(items);
+  }
+
+  async renderImageAsset(provider, asset, request, warnings, title, slug, user) {
+    const result = await this.generateImageBuffer(provider, asset, request, warnings, title, slug, user);
+    const normalizedBuffer = await this.resizeImageBuffer(result.buffer, asset.width, asset.height, asset.transparentBackground);
+    return {
+      path: asset.filename,
+      type: "image",
+      content: normalizedBuffer,
+      contentEncoding: "binary",
+      contentBase64: normalizedBuffer.toString("base64"),
+      previewDataUrl: createPreviewDataUrl(normalizedBuffer),
+      preview: asset.prompt,
+      sourcePath: asset.filename,
+      width: asset.width,
+      height: asset.height,
+      kind: asset.type,
+      assetId: asset.id,
+      assetType: asset.type,
+      prompt: asset.prompt,
+      accepted: asset.accepted !== false,
+      transparentBackground: asset.transparentBackground,
+      usedByFile: asset.usedByFile,
+      provider: asset.provider,
+      style: asset.style
+    };
+  }
+
+  async generateImageBuffer(provider, asset, request, warnings, title, slug, user) {
+    try {
+      return await provider.generateImage({
+        prompt: asset.prompt,
+        width: asset.width,
+        height: asset.height,
+        transparentBackground: asset.transparentBackground,
+        style: request.imageStyle,
+        title,
+        slug,
+        userId: user ? user.id : null
+      });
+    } catch (err) {
+      warnings.push(`Image generation failed for ${asset.id}: ${err.message}. A safe placeholder was used.`);
+      const placeholder = await new PlaceholderImageProvider().generateImage({
+        prompt: asset.prompt,
+        width: asset.width,
+        height: asset.height,
+        transparentBackground: asset.transparentBackground
+      });
+      return placeholder;
+    }
+  }
+
+  async resizeImageBuffer(buffer, width, height, transparentBackground) {
+    const image = await Jimp.read(buffer);
+    image.contain(Math.max(1, width), Math.max(1, height), Jimp.RESIZE_BILINEAR);
+    if (!transparentBackground) {
+      image.background(0xffffffff);
+    }
+    return new Promise((resolve, reject) => {
+      image.getBuffer(Jimp.MIME_PNG, (err, out) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(out);
+        }
+      });
+    });
   }
 
   sanitizeCodeContent(content, resolvedPhysics, request, warnings, sourcePath) {
@@ -875,9 +1257,11 @@ class AiGameGeneratorService {
       resolvedPhysicsMode: normalized.resolvedPhysicsMode,
       project: normalized.project,
       gameDesign: normalized.gameDesign,
+      imageAssets: normalized.imageAssets || [],
       modelJson: clone({
         project: normalized.project,
         gameDesign: normalized.gameDesign,
+        imageAssets: normalized.imageAssets || [],
         warnings: normalized.warnings,
         nextSteps: normalized.nextSteps,
         resolvedPhysicsMode: normalized.resolvedPhysicsMode
@@ -899,7 +1283,15 @@ class AiGameGeneratorService {
       encoding: file.contentEncoding || file.encoding || "utf8",
       sourcePath: file.sourcePath || file.path,
       preview: file.preview || "",
-      size: Buffer.isBuffer(file.content) ? file.content.length : Buffer.byteLength(String(file.content || ""), "utf8")
+      size: Buffer.isBuffer(file.content) ? file.content.length : Buffer.byteLength(String(file.content || ""), "utf8"),
+      assetId: file.assetId,
+      assetType: file.assetType,
+      prompt: file.prompt,
+      accepted: file.accepted,
+      transparentBackground: file.transparentBackground,
+      usedByFile: file.usedByFile,
+      provider: file.provider,
+      style: file.style
     };
     if (Buffer.isBuffer(file.content)) {
       record.contentBase64 = file.content.toString("base64");
@@ -990,7 +1382,15 @@ class AiGameGeneratorService {
       size: file.size || 0,
       width: file.width,
       height: file.height,
-      kind: file.kind
+      kind: file.kind,
+      assetId: file.assetId,
+      assetType: file.assetType,
+      prompt: file.prompt,
+      accepted: file.accepted,
+      transparentBackground: file.transparentBackground,
+      usedByFile: file.usedByFile,
+      provider: file.provider,
+      style: file.style
     }));
     return {
       id: record.id,
@@ -999,6 +1399,7 @@ class AiGameGeneratorService {
       project: record.project,
       gameDesign: record.gameDesign,
       modelJson: record.modelJson || null,
+      imageAssets: record.imageAssets || [],
       warnings: record.warnings || [],
       nextSteps: record.nextSteps || [],
       resolvedPhysicsMode: record.resolvedPhysicsMode,
@@ -1007,6 +1408,96 @@ class AiGameGeneratorService {
       files,
       managedPaths: record.managedPaths || []
     };
+  }
+
+  getImageProvider(providerName) {
+    const name = normalizeImageProvider(providerName);
+    if (name === "openai") {
+      return this.imageProviders.openai();
+    }
+    if (name === "comfyui") {
+      return this.imageProviders.comfyui();
+    }
+    return this.imageProviders.placeholder();
+  }
+
+  async regenerateImageAsset(draftId, assetId, input, user) {
+    const draftRecord = this.getDraftRecord(draftId);
+    if (!draftRecord) {
+      throw new Error("draft not found");
+    }
+    const draft = draftRecord.get();
+    if (draft.userId != null && user != null && draft.userId !== user.id) {
+      throw new Error("You must own the target draft to regenerate an image");
+    }
+    const assets = Array.isArray(draft.imageAssets) ? draft.imageAssets.slice() : [];
+    const index = assets.findIndex((asset) => asset && (asset.id === assetId || asset.filename === assetId));
+    if (index < 0) {
+      throw new Error("image asset not found");
+    }
+    const request = this.validateRequest(Object.assign({}, draft.request || {}, input || {}, {
+      generateImages: true
+    }));
+    const asset = Object.assign({}, assets[index]);
+    if (typeof input.prompt === "string" && input.prompt.trim().length > 0) {
+      asset.prompt = this.sanitizeImagePrompt(input.prompt, request, asset.type, draft.project && draft.project.title ? draft.project.title : this.fallbackTitle(request.idea), draft.project && draft.project.slug ? draft.project.slug : "", asset.usedByFile || "source/main.js", []);
+    }
+    if (typeof input.imageStyle === "string") {
+      request.imageStyle = normalizeImageStyle(input.imageStyle);
+    }
+    if (typeof input.transparentBackground === "boolean") {
+      asset.transparentBackground = input.transparentBackground;
+    }
+    if (Number.isInteger(input.width)) {
+      asset.width = clampImageDimension(input.width, asset.width);
+    }
+    if (Number.isInteger(input.height)) {
+      asset.height = clampImageDimension(input.height, asset.height);
+    }
+    asset.provider = request.imageProvider;
+    asset.style = request.imageStyle;
+    const warnings = Array.isArray(draft.warnings) ? draft.warnings.slice() : [];
+    const normalizedProjectTitle = draft.project && draft.project.title ? draft.project.title : this.fallbackTitle(request.idea);
+    const generated = await this.renderImageAsset(this.getImageProvider(request.imageProvider), asset, request, warnings, normalizedProjectTitle, draft.project && draft.project.slug ? draft.project.slug : "", user);
+    const nextImageAssets = assets.map((entry, idx) => idx === index ? Object.assign({}, asset, {
+      accepted: input.accepted != null ? !!input.accepted : entry.accepted !== false,
+      previewDataUrl: generated.previewDataUrl,
+      contentBase64: generated.contentBase64,
+      contentEncoding: generated.contentEncoding,
+      size: generated.size,
+      generatedAt: Date.now()
+    }) : entry);
+    const aliasPaths = new Set([asset.filename]);
+    if (asset.type === "ui" && /icon|thumbnail/.test(asset.id)) {
+      aliasPaths.add("sprites/icon.png");
+    }
+    if ((asset.type === "background" || asset.type === "title-screen")) {
+      aliasPaths.add("sprites/poster.png");
+    }
+    const nextFiles = Array.isArray(draft.files) ? draft.files.map((file) => {
+      if (file.assetId === asset.id || aliasPaths.has(file.path)) {
+        return Object.assign({}, file, generated, {
+          path: file.path,
+          sourcePath: file.sourcePath || file.path,
+          accepted: input.accepted != null ? !!input.accepted : file.accepted !== false
+        });
+      }
+      return file;
+    }) : [];
+    const nextRecord = Object.assign({}, draftRecord.get(), {
+      imageAssets: nextImageAssets,
+      files: nextFiles,
+      warnings
+    });
+    draftRecord.set(nextRecord);
+    const updatedPreview = await this.buildPreview({
+      files: nextFiles,
+      imageAssets: nextImageAssets
+    }, this.getProject(draft.targetProjectId || (draft.request && draft.request.targetProjectId)), request, shouldUseMatter(request));
+    nextRecord.preview = updatedPreview.files;
+    nextRecord.managedPaths = updatedPreview.managedPaths;
+    draftRecord.set(nextRecord);
+    return this.exportDraft(nextRecord, updatedPreview);
   }
 
   async regenerateGameProject(draftId, input, user) {
@@ -1032,6 +1523,7 @@ class AiGameGeneratorService {
       `Question: ${question || "Explain the game, controls, and how to extend it."}`,
       `Project: ${JSON.stringify(draft.project, null, 2)}`,
       `Game design: ${JSON.stringify(draft.gameDesign, null, 2)}`,
+      `Image assets: ${JSON.stringify(draft.imageAssets || [], null, 2)}`,
       `Validated model JSON: ${JSON.stringify(draft.modelJson || {}, null, 2)}`,
       `Warnings: ${JSON.stringify(draft.warnings || [])}`,
       `Next steps: ${JSON.stringify(draft.nextSteps || [])}`
@@ -1160,7 +1652,8 @@ class AiGameGeneratorService {
           path,
           contentBase64: Buffer.isBuffer(file) ? file.toString("base64") : Buffer.from(String(file), "utf8").toString("base64"),
           encoding: "binary",
-          size: Buffer.isBuffer(file) ? file.length : Buffer.byteLength(String(file), "utf8")
+          size: Buffer.isBuffer(file) ? file.length : Buffer.byteLength(String(file), "utf8"),
+          info: clone(project.getFileInfo(path) || {})
         });
       }
     }
@@ -1189,6 +1682,7 @@ class AiGameGeneratorService {
       try {
         const buffer = Buffer.from(item.contentBase64, "base64");
         await this.writePath(project, item.path, buffer);
+        this.restoreProjectFileInfo(project, item.path, item.info || {}, buffer.length);
       } catch (err) {
         // best effort rollback
       }
@@ -1200,6 +1694,7 @@ class AiGameGeneratorService {
       ? bufferFromContent(file.content, "base64")
       : contentToString(file.content, "utf8");
     await this.writePath(project, file.path, content);
+    this.restoreProjectFileInfo(project, file.path, file, Buffer.isBuffer(content) ? content.length : Buffer.byteLength(String(content), "utf8"));
   }
 
   async writePath(project, path, content) {
@@ -1212,8 +1707,32 @@ class AiGameGeneratorService {
   async deleteProjectPath(project, path) {
     return new Promise((resolve) => {
       const storagePath = `${project.owner.id}/${project.id}/${path}`;
-      project.content.files["delete"](storagePath, () => resolve());
+      project.content.files["delete"](storagePath, () => {
+        if (project && typeof project.deleteFileInfo === "function") {
+          project.deleteFileInfo(path);
+        }
+        resolve();
+      });
     });
+  }
+
+  restoreProjectFileInfo(project, path, info, size) {
+    if (!project || typeof project.setFileInfo !== "function") {
+      return;
+    }
+    const nextInfo = clone(info || {});
+    const existing = typeof project.getFileInfo === "function" ? (project.getFileInfo(path) || {}) : {};
+    if (size != null) {
+      nextInfo.size = size;
+    }
+    if (nextInfo.version == null) {
+      nextInfo.version = (existing.version || 0) + 1;
+    }
+    project.setFileInfo(path, "version", nextInfo.version);
+    project.setFileInfo(path, "size", nextInfo.size != null ? nextInfo.size : size || 0);
+    if (nextInfo.properties != null) {
+      project.setFileInfo(path, "properties", nextInfo.properties);
+    }
   }
 
   async createProjectFromDraft(user, draft) {

@@ -83,6 +83,10 @@ this.API = (function() {
       return this.handleAiExplain(req, res);
     });
 
+    this.app.post(/^\/api\/ai\/regenerate-image\/?$/, async (req, res) => {
+      return this.handleAiRegenerateImage(req, res);
+    });
+
     this.app.post(/^\/api\/ai\/apply-game\/?$/, async (req, res) => {
       return this.handleAiApply(req, res);
     });
@@ -110,7 +114,7 @@ this.API = (function() {
     var message, status;
     message = err != null && err.message != null ? err.message : "Unexpected error";
     status = 500;
-    if (/idea is required|draft not found|target project id is required|target project not found|You must own the target project/i.test(message)) {
+    if (/idea is required|draft not found|image asset not found|target project id is required|target project not found|You must own the target project|You must own the target draft/i.test(message)) {
       status = 400;
     } else if (/OPENAI_API_KEY|provider|OpenAI request failed/i.test(message)) {
       status = 502;
@@ -202,6 +206,31 @@ this.API = (function() {
         return this.sendError(res, 400, "targetProjectId is required");
       }
       return res.json(await this.ai.applyProjectDraft(req.body.draftId, user, req.body.targetProjectId, mode));
+    } catch (err) {
+      return this.handleAiError(res, err);
+    }
+  };
+
+  API.prototype.handleAiRegenerateImage = async function(req, res) {
+    var user;
+    user = this.getCurrentUser(req);
+    if (user == null) {
+      return this.sendError(res, 401, "not connected");
+    }
+    if (!this.server.rate_limiter.accept("ai_generate_ip", req.ip)) {
+      return this.sendError(res, 429, "rate limited");
+    }
+    if (!this.server.rate_limiter.accept("ai_generate_user", user.id)) {
+      return this.sendError(res, 429, "rate limited");
+    }
+    try {
+      if (!req.body || !req.body.draftId) {
+        return this.sendError(res, 400, "draftId is required");
+      }
+      if (!req.body.assetId) {
+        return this.sendError(res, 400, "assetId is required");
+      }
+      return res.json(await this.ai.regenerateImageAsset(req.body.draftId, req.body.assetId, req.body, user));
     } catch (err) {
       return this.handleAiError(res, err);
     }

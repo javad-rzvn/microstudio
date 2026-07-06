@@ -74,6 +74,7 @@ AppUI = class AppUI {
     //@setSection("options")
     this.createLoginFunctions();
     this.createAiGeneratorFunctions();
+    this.updateAiProviderVisibility();
     advanced = document.getElementById("advanced-create-project-options-button");
     this.setAction("create-project-button", () => {
       this.show("create-project-overlay");
@@ -535,10 +536,11 @@ AppUI = class AppUI {
   }
 
   createAiGeneratorFunctions() {
-    var fileTree, i, len, path, ref;
+    var assetGallery, fileTree, i, len, path, ref;
     this.aiDraft = null;
     this.aiDraftByPath = {};
     this.aiDraftPreviewByPath = {};
+    this.aiDraftImageById = {};
     this.aiSelectedPath = null;
     this.aiBusy = false;
     this.setAction("ai-generator-generate", () => {
@@ -570,10 +572,46 @@ AppUI = class AppUI {
         return this.selectAiDraftFile(target.dataset.path);
       }
     });
+    assetGallery = this.get("ai-generator-asset-gallery");
+    assetGallery.addEventListener("click", (event) => {
+      var action, assetId, target;
+      target = event.target;
+      while (target != null && target !== assetGallery && !target.classList.contains("ai-asset-card")) {
+        target = target.parentNode;
+      }
+      if (!(target != null) || !target.classList.contains("ai-asset-card")) {
+        return;
+      }
+      assetId = target.dataset.assetId;
+      action = null;
+      if ((event.target != null) && (event.target.dataset != null)) {
+        action = event.target.dataset.action;
+      }
+      if (action != null) {
+        return this.handleAiAssetAction(action, assetId);
+      } else if (assetId != null) {
+        return this.selectAiDraftAsset(assetId);
+      }
+    });
     this.get("ai-generator-target-mode").addEventListener("change", () => {
       return this.updateAiGeneratorButtons();
     });
-    ref = ["ai-generator-idea", "ai-generator-language", "ai-generator-physics", "ai-generator-difficulty", "ai-generator-art-style", "ai-generator-aspect-ratio"];
+    this.get("ai-generator-generate-images").addEventListener("change", () => {
+      return this.updateAiGeneratorButtons();
+    });
+    this.get("ai-generator-image-style").addEventListener("change", () => {
+      return this.updateAiGeneratorButtons();
+    });
+    this.get("ai-generator-transparent-sprites").addEventListener("change", () => {
+      return this.updateAiGeneratorButtons();
+    });
+    this.get("ai-generator-asset-resolution").addEventListener("change", () => {
+      return this.updateAiGeneratorButtons();
+    });
+    this.get("ai-generator-image-provider").addEventListener("change", () => {
+      return this.updateAiGeneratorButtons();
+    });
+    ref = ["ai-generator-idea", "ai-generator-language", "ai-generator-physics", "ai-generator-difficulty", "ai-generator-art-style", "ai-generator-image-style", "ai-generator-aspect-ratio"];
     for (i = 0, len = ref.length; i < len; i++) {
       path = ref[i];
       this.get(path).addEventListener("input", () => {
@@ -583,6 +621,7 @@ AppUI = class AppUI {
         return this.updateAiGeneratorButtons();
       });
     }
+    this.updateAiProviderVisibility();
     return this.renderAiDraft(null);
   }
 
@@ -590,11 +629,13 @@ AppUI = class AppUI {
     this.aiDraft = null;
     this.aiDraftByPath = {};
     this.aiDraftPreviewByPath = {};
+    this.aiDraftImageById = {};
     this.aiSelectedPath = null;
     this.setAiStatus("");
     this.setAiWarnings([]);
     this.renderAiSummary(null);
     this.renderAiFileTree([]);
+    this.renderAiAssetGallery([]);
     this.renderAiPreview(null);
     this.setAiExplanation("");
     return this.updateAiGeneratorButtons();
@@ -669,6 +710,24 @@ AppUI = class AppUI {
           element.disabled = !canExplain;
       }
     }
+    ref = ["ai-generator-image-style", "ai-generator-transparent-sprites", "ai-generator-asset-resolution", "ai-generator-image-provider", "ai-generator-generate-images"];
+    for (i = 0, len = ref.length; i < len; i++) {
+      element = this.get(ref[i]);
+      if (element == null) {
+        continue;
+      }
+      element.disabled = this.aiBusy;
+    }
+    if ((this.get("ai-generator-generate-images") != null) && this.get("ai-generator-generate-images").checked) {
+      this.get("ai-generator-asset-gallery").style.display = "grid";
+    } else {
+      this.get("ai-generator-asset-gallery").style.display = this.aiDraft != null && (this.aiDraft.imageAssets != null) && this.aiDraft.imageAssets.length > 0 ? "grid" : "none";
+    }
+    ref = document.querySelectorAll(".ai-asset-actions button");
+    for (i = 0, len = ref.length; i < len; i++) {
+      element = ref[i];
+      element.disabled = this.aiBusy;
+    }
   }
 
   setAiBusy(loading) {
@@ -701,6 +760,7 @@ AppUI = class AppUI {
       ["Core loop", draft.gameDesign != null ? draft.gameDesign.coreLoop : ""],
       ["Win condition", draft.gameDesign != null ? draft.gameDesign.winCondition : ""],
       ["Lose condition", draft.gameDesign != null ? draft.gameDesign.loseCondition : ""],
+      ["Images", `${(draft.imageAssets != null ? draft.imageAssets.length : 0)} prepared`],
       ["Files", `${(draft.preview != null ? draft.preview.length : 0)} prepared`]
     ];
     for (entry of rows) {
@@ -740,6 +800,57 @@ AppUI = class AppUI {
       item.appendChild(label);
       item.appendChild(badge);
       container.appendChild(item);
+    }
+  }
+
+  renderAiAssetGallery(assets) {
+    var action, actions, asset, card, container, i, image, j, label, len, len1, meta, previewSource, ref, ref1, selectedPath, status, title;
+    container = this.get("ai-generator-asset-gallery");
+    if (container == null) {
+      return;
+    }
+    container.innerHTML = "";
+    selectedPath = this.aiSelectedPath;
+    ref = assets || [];
+    for (i = 0, len = ref.length; i < len; i++) {
+      asset = ref[i];
+      previewSource = this.aiDraftByPath[asset.filename] || this.aiDraftPreviewByPath[asset.filename] || {};
+      card = document.createElement("div");
+      card.classList.add("ai-asset-card");
+      if ((selectedPath != null) && (selectedPath === asset.filename || selectedPath === asset.path)) {
+        card.classList.add("selected");
+      }
+      card.dataset.assetId = asset.id;
+      image = document.createElement("img");
+      image.classList.add("ai-asset-thumb");
+      image.src = previewSource.previewDataUrl || asset.previewDataUrl || (previewSource.contentBase64 != null ? `data:image/png;base64,${previewSource.contentBase64}` : asset.contentBase64 != null ? `data:image/png;base64,${asset.contentBase64}` : "");
+      image.alt = asset.id;
+      meta = document.createElement("div");
+      meta.classList.add("ai-asset-meta");
+      meta.innerHTML = "<strong></strong><span></span><span></span>";
+      meta.childNodes[0].textContent = asset.id;
+      meta.childNodes[1].textContent = asset.filename;
+      meta.childNodes[2].textContent = asset.prompt || "";
+      actions = document.createElement("div");
+      actions.classList.add("ai-asset-actions");
+      ref1 = [["Regenerate this asset", "regenerate-asset"], ["Edit prompt", "edit-asset-prompt"], [(asset.accepted ? "Accepted" : "Accept asset"), "accept-asset"], ["Replace asset", "replace-asset"]];
+      for (j = 0, len1 = ref1.length; j < len1; j++) {
+        action = ref1[j];
+        title = action[0];
+        status = action[1];
+        label = document.createElement("button");
+        label.textContent = title;
+        label.dataset.action = status;
+        label.dataset.assetId = asset.id;
+        if (asset.accepted && status === "accept-asset") {
+          label.classList.add("accepted");
+        }
+        actions.appendChild(label);
+      }
+      card.appendChild(image);
+      card.appendChild(meta);
+      card.appendChild(actions);
+      container.appendChild(card);
     }
   }
 
@@ -785,16 +896,18 @@ AppUI = class AppUI {
   }
 
   renderAiDraft(draft) {
-    var file, i, len, previewFiles, selected;
+    var asset, file, i, len, previewFiles, selected;
     this.aiDraft = draft;
     this.aiDraftByPath = {};
     this.aiDraftPreviewByPath = {};
+    this.aiDraftImageById = {};
     this.aiSelectedPath = null;
     if (draft == null) {
       this.setAiStatus("");
       this.setAiWarnings([]);
       this.renderAiSummary(null);
       this.renderAiFileTree([]);
+      this.renderAiAssetGallery([]);
       this.renderAiPreview(null);
       this.setAiExplanation("");
       return this.updateAiGeneratorButtons();
@@ -810,11 +923,18 @@ AppUI = class AppUI {
         this.aiDraftByPath[file.path] = file;
       }
     }
+    if (Array.isArray(draft.imageAssets)) {
+      for (i = 0, len = draft.imageAssets.length; i < len; i++) {
+        asset = draft.imageAssets[i];
+        this.aiDraftImageById[asset.id] = asset;
+      }
+    }
     this.aiSelectedPath = previewFiles.length > 0 ? previewFiles[0].path : null;
     this.renderAiSummary(draft);
     this.setAiWarnings(draft.warnings || []);
     this.setAiStatus(`Ready: ${draft.project != null ? draft.project.title : "generated draft"} (${draft.resolvedPhysicsMode || "manual"} physics).`);
     this.renderAiFileTree(previewFiles);
+    this.renderAiAssetGallery(draft.imageAssets || []);
     selected = this.selectAiDraftFile(this.aiSelectedPath, true);
     if (!selected && previewFiles.length > 0) {
       this.renderAiPreview(previewFiles[0]);
@@ -841,6 +961,84 @@ AppUI = class AppUI {
     return true;
   }
 
+  selectAiDraftAsset(assetId) {
+    var asset;
+    if (assetId == null) {
+      return false;
+    }
+    asset = this.aiDraftImageById[assetId];
+    if (asset == null) {
+      return false;
+    }
+    this.aiSelectedPath = asset.filename;
+    this.renderAiAssetGallery((this.aiDraft != null ? this.aiDraft.imageAssets : []) || []);
+    if ((this.aiDraftByPath[asset.filename] != null) || (this.aiDraftPreviewByPath[asset.filename] != null)) {
+      this.renderAiPreview(Object.assign({}, this.aiDraftByPath[asset.filename] || {}, this.aiDraftPreviewByPath[asset.filename] || {}));
+    } else {
+      this.renderAiPreview(null);
+    }
+    return true;
+  }
+
+  handleAiAssetAction(action, assetId) {
+    var asset, newPrompt, payload, replacement;
+    if (assetId == null) {
+      return;
+    }
+    asset = this.aiDraftImageById[assetId];
+    if (asset == null) {
+      return;
+    }
+    switch (action) {
+      case "edit-asset-prompt":
+        newPrompt = window.prompt("Edit asset prompt", asset.prompt || "");
+        if (newPrompt == null) {
+          return;
+        }
+        asset.prompt = newPrompt.trim();
+        return this.renderAiDraft(this.aiDraft);
+      case "accept-asset":
+        asset.accepted = !asset.accepted;
+        return this.renderAiDraft(this.aiDraft);
+      case "replace-asset":
+        replacement = window.prompt("Replace asset prompt", asset.prompt || "");
+        if (replacement == null) {
+          return;
+        }
+        asset.prompt = replacement.trim();
+        return this.regenerateAiImageAsset(asset.id, asset.prompt);
+      case "regenerate-asset":
+        return this.regenerateAiImageAsset(asset.id, asset.prompt);
+    }
+  }
+
+  regenerateAiImageAsset(assetId, prompt) {
+    var payload;
+    if (this.aiDraft == null) {
+      return;
+    }
+    payload = {
+      draftId: this.aiDraft.id,
+      assetId: assetId,
+      prompt: prompt,
+      imageProvider: this.get("ai-generator-image-provider") != null ? this.get("ai-generator-image-provider").value : "placeholder",
+      imageStyle: this.get("ai-generator-image-style").value,
+      assetResolution: this.get("ai-generator-asset-resolution").value,
+      transparentBackground: this.get("ai-generator-transparent-sprites").value === "true",
+      accepted: true
+    };
+    this.setAiBusy(true);
+    this.setAiStatus("Regenerating asset...");
+    return this.postAiRequest("/api/ai/regenerate-image", payload).then((draft) => {
+      this.setAiBusy(false);
+      return this.renderAiDraft(draft);
+    }, (err) => {
+      this.setAiBusy(false);
+      this.setAiStatus(err.message || "Image regeneration failed", true);
+      return this.setAiWarnings([err.message || "Image regeneration failed"]);
+    });
+  }
+
   getAiRequestPayload() {
     var currentProjectId, idea, payload, targetMode;
     idea = this.get("ai-generator-idea").value.trim();
@@ -852,12 +1050,17 @@ AppUI = class AppUI {
       physics: this.get("ai-generator-physics").value,
       difficulty: this.get("ai-generator-difficulty").value,
       artStyle: this.get("ai-generator-art-style").value,
+      generateImages: this.get("ai-generator-generate-images").checked,
+      imageProvider: this.get("ai-generator-image-provider") != null ? this.get("ai-generator-image-provider").value : "placeholder",
+      imageStyle: this.get("ai-generator-image-style").value,
+      transparentSprites: this.get("ai-generator-transparent-sprites").value === "true",
+      assetResolution: this.get("ai-generator-asset-resolution").value,
       aspectRatio: this.get("ai-generator-aspect-ratio").value,
       mode: targetMode,
       targetProjectId: targetMode === "apply_to_current_project" ? currentProjectId : null,
       constraints: {
-        maxFiles: 20,
-        maxFileSizeKb: 120,
+        maxFiles: 32,
+        maxFileSizeKb: 256,
         includeDocs: true,
         includeTutorialComments: true
       }
@@ -1271,8 +1474,9 @@ AppUI = class AppUI {
       text = this.app.translator.get("Your account is out of space!");
       text += " " + this.app.translator.get("You are using %USED% of the %ALLOWED% you are allowed.").replace("%USED%", this.displayByteSize(this.app.user.info.size)).replace("%ALLOWED%", this.displayByteSize(this.app.user.info.max_storage));
       text += ` <a href='https://microstudio.dev/community/tips/your-account-is-out-of-space/109/' target='_blank'>${this.app.translator.get("More info...")}</a>`;
-      return this.addWarningMessage(text, void 0, "out_of_storage", false);
+      this.addWarningMessage(text, void 0, "out_of_storage", false);
     }
+    this.updateAiProviderVisibility();
   }
 
   //if not @project?
@@ -1287,6 +1491,7 @@ AppUI = class AppUI {
     this.hide("login-info");
     this.nick = null;
     this.clearAiDraft();
+    this.updateAiProviderVisibility();
     return this.project = null;
   }
 
@@ -1505,7 +1710,21 @@ AppUI = class AppUI {
     this.server_splitbar.initPosition(50);
     this.app.runwindow.terminal.start();
     this.updateActiveUsers();
+    this.updateAiProviderVisibility();
     return this.doc_splitbar.initPosition(50);
+  }
+
+  updateAiProviderVisibility() {
+    var isAdmin, row;
+    row = this.get("ai-generator-image-provider-row");
+    if (row == null) {
+      return;
+    }
+    isAdmin = (this.app.user != null) && (this.app.user.flags != null) && this.app.user.flags.admin;
+    row.classList.toggle("hidden", !isAdmin);
+    if (this.get("ai-generator-image-provider") != null) {
+      return this.get("ai-generator-image-provider").disabled = !isAdmin;
+    }
   }
 
   updateProjectTitle() {

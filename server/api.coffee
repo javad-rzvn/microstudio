@@ -67,6 +67,9 @@ class @API
     @app.post /^\/api\/ai\/explain-generated-game\/?$/, (req,res)=>
       @handleAiExplain req,res
 
+    @app.post /^\/api\/ai\/regenerate-image\/?$/, (req,res)=>
+      @handleAiRegenerateImage req,res
+
     @app.post /^\/api\/ai\/apply-game\/?$/, (req,res)=>
       @handleAiApply req,res
 
@@ -85,7 +88,7 @@ class @API
   handleAiError:(res,err)->
     message = if err?.message? then err.message else "Unexpected error"
     status = 500
-    if /idea is required|draft not found|target project id is required|target project not found|You must own the target project/i.test message
+    if /idea is required|draft not found|image asset not found|target project id is required|target project not found|You must own the target project|You must own the target draft/i.test message
       status = 400
     else if /OPENAI_API_KEY|provider|OpenAI request failed/i.test message
       status = 502
@@ -136,6 +139,19 @@ class @API
     if mode == "apply_to_current_project" and not req.body.targetProjectId?
       return @sendError res,400,"targetProjectId is required"
     @ai.applyProjectDraft(req.body.draftId,user,req.body.targetProjectId,mode).then((result)=>
+      res.json result
+    ).catch((err)=>
+      @handleAiError res,err
+    )
+
+  handleAiRegenerateImage:(req,res)->
+    user = @getCurrentUser req
+    return @sendError res,401,"not connected" if not user?
+    return @sendError res,429,"rate limited" if not @server.rate_limiter.accept "ai_generate_ip",req.ip
+    return @sendError res,429,"rate limited" if not @server.rate_limiter.accept "ai_generate_user",user.id
+    return @sendError res,400,"draftId is required" if not req.body? or not req.body.draftId?
+    return @sendError res,400,"assetId is required" if not req.body.assetId?
+    @ai.regenerateImageAsset(req.body.draftId,req.body.assetId,req.body,user).then((result)=>
       res.json result
     ).catch((err)=>
       @handleAiError res,err

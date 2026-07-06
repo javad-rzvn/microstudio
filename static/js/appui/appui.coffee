@@ -469,6 +469,7 @@ class AppUI
     @aiDraft = null
     @aiDraftByPath = {}
     @aiDraftPreviewByPath = {}
+    @aiDraftImageById = {}
     @aiSelectedPath = null
     @aiBusy = false
 
@@ -498,7 +499,33 @@ class AppUI
       if target? and target.classList.contains("ai-file-item")
         @selectAiDraftFile target.dataset.path
 
+    assetGallery = @get("ai-generator-asset-gallery")
+    assetGallery.addEventListener "click",(event)=>
+      target = event.target
+      while target? and target != assetGallery and not target.classList.contains("ai-asset-card")
+        target = target.parentNode
+      if not target? or not target.classList.contains("ai-asset-card")
+        return
+      assetId = target.dataset.assetId
+      action = null
+      if event.target? and event.target.dataset?
+        action = event.target.dataset.action
+      if action?
+        @handleAiAssetAction action,assetId
+      else if assetId?
+        @selectAiDraftAsset assetId
+
     @get("ai-generator-target-mode").addEventListener "change",()=>
+      @updateAiGeneratorButtons()
+    @get("ai-generator-generate-images").addEventListener "change",()=>
+      @updateAiGeneratorButtons()
+    @get("ai-generator-image-style").addEventListener "change",()=>
+      @updateAiGeneratorButtons()
+    @get("ai-generator-transparent-sprites").addEventListener "change",()=>
+      @updateAiGeneratorButtons()
+    @get("ai-generator-asset-resolution").addEventListener "change",()=>
+      @updateAiGeneratorButtons()
+    @get("ai-generator-image-provider").addEventListener "change",()=>
       @updateAiGeneratorButtons()
 
     for id in [
@@ -507,6 +534,7 @@ class AppUI
       "ai-generator-physics"
       "ai-generator-difficulty"
       "ai-generator-art-style"
+      "ai-generator-image-style"
       "ai-generator-aspect-ratio"
     ]
       do (id)=>
@@ -515,17 +543,20 @@ class AppUI
         @get(id).addEventListener "change",()=>
           @updateAiGeneratorButtons()
 
+    @updateAiProviderVisibility()
     @renderAiDraft null
 
   clearAiDraft:()->
     @aiDraft = null
     @aiDraftByPath = {}
     @aiDraftPreviewByPath = {}
+    @aiDraftImageById = {}
     @aiSelectedPath = null
     @setAiStatus ""
     @setAiWarnings []
     @renderAiSummary null
     @renderAiFileTree []
+    @renderAiAssetGallery []
     @renderAiPreview null
     @setAiExplanation ""
     @updateAiGeneratorButtons()
@@ -555,6 +586,7 @@ class AppUI
   updateAiGeneratorButtons:()->
     draftReady = @aiDraft?
     targetMode = if @get("ai-generator-target-mode")? then @get("ai-generator-target-mode").value else "apply_to_current_project"
+    generateImages = if @get("ai-generator-generate-images")? then @get("ai-generator-generate-images").checked else false
     canGenerate = not @aiBusy
     canRegenerate = draftReady and not @aiBusy
     canExplain = draftReady and not @aiBusy
@@ -579,6 +611,22 @@ class AppUI
           element.disabled = not (draftReady and not @aiBusy)
         when "ai-generator-explain"
           element.disabled = not canExplain
+    for id in [
+      "ai-generator-image-style"
+      "ai-generator-transparent-sprites"
+      "ai-generator-asset-resolution"
+      "ai-generator-image-provider"
+      "ai-generator-generate-images"
+    ]
+      element = @get(id)
+      continue if not element?
+      element.disabled = @aiBusy
+    if @get("ai-generator-generate-images")?.checked
+      @get("ai-generator-asset-gallery").style.display = "grid"
+    else
+      @get("ai-generator-asset-gallery").style.display = if draftReady and @aiDraft?.imageAssets?.length > 0 then "grid" else "none"
+    for button in document.querySelectorAll ".ai-asset-actions button"
+      button.disabled = @aiBusy
 
   setAiBusy:(loading)->
     @aiBusy = loading
@@ -634,6 +682,46 @@ class AppUI
       item.appendChild badge
       container.appendChild item
 
+  renderAiAssetGallery:(assets)->
+    container = @get("ai-generator-asset-gallery")
+    return if not container?
+    container.innerHTML = ""
+    selectedPath = @aiSelectedPath
+    for asset in assets or []
+      previewSource = @aiDraftByPath[asset.filename] or @aiDraftPreviewByPath[asset.filename] or {}
+      card = document.createElement "div"
+      card.classList.add "ai-asset-card"
+      card.classList.add "selected" if selectedPath? and (selectedPath == asset.filename or selectedPath == asset.path)
+      card.dataset.assetId = asset.id
+      image = document.createElement "img"
+      image.classList.add "ai-asset-thumb"
+      image.src = previewSource.previewDataUrl or asset.previewDataUrl or if previewSource.contentBase64? then "data:image/png;base64,#{previewSource.contentBase64}" else if asset.contentBase64? then "data:image/png;base64,#{asset.contentBase64}" else ""
+      image.alt = asset.id
+      meta = document.createElement "div"
+      meta.classList.add "ai-asset-meta"
+      meta.innerHTML = "<strong></strong><span></span><span></span>"
+      meta.childNodes[0].textContent = asset.id
+      meta.childNodes[1].textContent = asset.filename
+      meta.childNodes[2].textContent = asset.prompt or ""
+      actions = document.createElement "div"
+      actions.classList.add "ai-asset-actions"
+      for action in [
+        ["Regenerate this asset","regenerate-asset"]
+        ["Edit prompt","edit-asset-prompt"]
+        [if asset.accepted then "Accepted" else "Accept asset","accept-asset"]
+        ["Replace asset","replace-asset"]
+      ]
+        button = document.createElement "button"
+        button.textContent = action[0]
+        button.dataset.action = action[1]
+        button.dataset.assetId = asset.id
+        button.classList.add "accepted" if asset.accepted and action[1] == "accept-asset"
+        actions.appendChild button
+      card.appendChild image
+      card.appendChild meta
+      card.appendChild actions
+      container.appendChild card
+
   renderAiPreview:(file)->
     container = @get("ai-generator-file-preview")
     meta = @get("ai-generator-preview-file-name")
@@ -671,12 +759,14 @@ class AppUI
     @aiDraft = draft
     @aiDraftByPath = {}
     @aiDraftPreviewByPath = {}
+    @aiDraftImageById = {}
     @aiSelectedPath = null
     if not draft?
       @setAiStatus ""
       @setAiWarnings []
       @renderAiSummary null
       @renderAiFileTree []
+      @renderAiAssetGallery []
       @renderAiPreview null
       @setAiExplanation ""
       @updateAiGeneratorButtons()
@@ -687,11 +777,15 @@ class AppUI
     if draft.files?
       for file in draft.files
         @aiDraftByPath[file.path] = file
+    if draft.imageAssets?
+      for asset in draft.imageAssets
+        @aiDraftImageById[asset.id] = asset
     @aiSelectedPath = if previewFiles.length > 0 then previewFiles[0].path else null
     @renderAiSummary draft
     @setAiWarnings draft.warnings or []
     @setAiStatus "Ready: #{if draft.project? then draft.project.title else "generated draft"} (#{draft.resolvedPhysicsMode or "manual"} physics)."
     @renderAiFileTree previewFiles
+    @renderAiAssetGallery draft.imageAssets or []
     selected = @selectAiDraftFile @aiSelectedPath,true
     if not selected and previewFiles.length > 0
       @renderAiPreview previewFiles[0]
@@ -709,6 +803,61 @@ class AppUI
     @renderAiPreview file
     return true
 
+  selectAiDraftAsset:(assetId)->
+    return false if not assetId?
+    asset = @aiDraftImageById[assetId]
+    return false if not asset?
+    @aiSelectedPath = asset.filename
+    @renderAiAssetGallery @aiDraft?.imageAssets or []
+    if @aiDraftByPath[asset.filename]? or @aiDraftPreviewByPath[asset.filename]?
+      @renderAiPreview Object.assign {},@aiDraftByPath[asset.filename] or {},@aiDraftPreviewByPath[asset.filename] or {}
+    else
+      @renderAiPreview null
+    true
+
+  handleAiAssetAction:(action,assetId)->
+    return if not assetId?
+    asset = @aiDraftImageById[assetId]
+    return if not asset?
+    switch action
+      when "edit-asset-prompt"
+        newPrompt = window.prompt "Edit asset prompt", asset.prompt or ""
+        return if newPrompt == null
+        asset.prompt = newPrompt.trim()
+        @renderAiDraft @aiDraft
+      when "accept-asset"
+        asset.accepted = not asset.accepted
+        @renderAiDraft @aiDraft
+      when "replace-asset"
+        replacement = window.prompt "Replace asset prompt", asset.prompt or ""
+        return if replacement == null
+        asset.prompt = replacement.trim()
+        @regenerateAiImageAsset asset.id,asset.prompt
+      when "regenerate-asset"
+        @regenerateAiImageAsset asset.id,asset.prompt
+
+  regenerateAiImageAsset:(assetId,prompt)->
+    return if not @aiDraft?
+    payload =
+      draftId: @aiDraft.id
+      assetId: assetId
+      prompt: prompt
+      imageProvider: if @get("ai-generator-image-provider")? then @get("ai-generator-image-provider").value else "placeholder"
+      imageStyle: @get("ai-generator-image-style").value
+      assetResolution: @get("ai-generator-asset-resolution").value
+      transparentBackground: @get("ai-generator-transparent-sprites").value == "true"
+      accepted: true
+    @setAiBusy true
+    @setAiStatus "Regenerating asset..."
+    @postAiRequest("/api/ai/regenerate-image",payload).then((draft)=>
+      @setAiBusy false
+      @renderAiDraft draft
+    ,(err)=>
+      @setAiBusy false
+      @setAiStatus(err.message or "Image regeneration failed", true)
+      @setAiWarnings [err.message or "Image regeneration failed"]
+    )
+
   getAiRequestPayload:()->
     idea = @get("ai-generator-idea").value.trim()
     targetMode = if @get("ai-generator-target-mode")? then @get("ai-generator-target-mode").value else "apply_to_current_project"
@@ -718,6 +867,11 @@ class AppUI
     physics: @get("ai-generator-physics").value
     difficulty: @get("ai-generator-difficulty").value
     artStyle: @get("ai-generator-art-style").value
+    generateImages: @get("ai-generator-generate-images").checked
+    imageProvider: if @get("ai-generator-image-provider")? then @get("ai-generator-image-provider").value else "placeholder"
+    imageStyle: @get("ai-generator-image-style").value
+    transparentSprites: @get("ai-generator-transparent-sprites").value == "true"
+    assetResolution: @get("ai-generator-asset-resolution").value
     aspectRatio: @get("ai-generator-aspect-ratio").value
     mode: targetMode
     targetProjectId: if targetMode == "apply_to_current_project" then currentProjectId else null
@@ -1055,6 +1209,7 @@ class AppUI
       text += " "+@app.translator.get("You are using %USED% of the %ALLOWED% you are allowed." ).replace("%USED%",@displayByteSize(@app.user.info.size)).replace("%ALLOWED%",@displayByteSize(@app.user.info.max_storage))
       text += " <a href='https://microstudio.dev/community/tips/your-account-is-out-of-space/109/' target='_blank'>#{@app.translator.get("More info...")}</a>"
       @addWarningMessage text,undefined,"out_of_storage",false
+    @updateAiProviderVisibility()
     #if not @project?
     #  @show "myprojects"
     #  @hide "projectview"
@@ -1069,6 +1224,7 @@ class AppUI
     @nick = null
     @clearAiDraft()
     @project = null
+    @updateAiProviderVisibility()
     #@get("user-info").style.display = "none"
 
   showLoginButton:()->
@@ -1277,6 +1433,15 @@ class AppUI
     @app.runwindow.terminal.start()
     @updateActiveUsers()
     @doc_splitbar.initPosition(50)
+    @updateAiProviderVisibility()
+
+  updateAiProviderVisibility:()->
+    row = @get("ai-generator-image-provider-row")
+    return if not row?
+    isAdmin = @app.user? and @app.user.flags? and @app.user.flags.admin
+    row.classList.toggle "hidden", not isAdmin
+    if @get("ai-generator-image-provider")?
+      @get("ai-generator-image-provider").disabled = not isAdmin
 
   updateProjectTitle:()->
     if @project?

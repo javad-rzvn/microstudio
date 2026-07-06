@@ -927,6 +927,20 @@ padding-left: 2px ;
   min-width: 0;
 }
 
+#ai-generator-image-provider-row {
+  grid-column: 1 / -1;
+}
+
+#ai-generator-image-provider-row.hidden {
+  display: none;
+}
+
+.ai-generator-form label input[type="checkbox"] {
+  width: auto;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
 .ai-generator-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -991,6 +1005,7 @@ padding-left: 2px ;
 }
 
 .ai-generator-summary h3,
+.ai-generator-assets h3,
 .ai-generator-files h3,
 .ai-generator-preview-pane h3,
 .ai-generator-explanation h3 {
@@ -1007,6 +1022,76 @@ padding-left: 2px ;
   line-height: 1.45;
   display: grid;
   gap: 6px;
+}
+
+#ai-generator-asset-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.ai-asset-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.05);
+  border: solid 1px rgba(255,255,255,.08);
+}
+
+.ai-asset-card.selected {
+  border-color: rgba(96,165,250,.48);
+  background: linear-gradient(180deg, rgba(59,130,246,.18), rgba(14,165,233,.10));
+}
+
+.ai-asset-thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  image-rendering: pixelated;
+  border-radius: 10px;
+  background: rgba(2, 6, 23, .9);
+}
+
+.ai-asset-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.ai-asset-meta strong {
+  font-size: 13px;
+}
+
+.ai-asset-meta span {
+  font-size: 12px;
+  color: rgba(255,255,255,.68);
+  word-break: break-word;
+}
+
+.ai-asset-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ai-asset-actions button {
+  border: none;
+  outline: none;
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  background: rgba(255,255,255,.12);
+  color: rgba(255,255,255,.9);
+}
+
+.ai-asset-actions button:hover {
+  background: rgba(255,255,255,.18);
+}
+
+.ai-asset-actions button.accepted {
+  background: rgba(34,197,94,.22);
 }
 
 .ai-summary-row {
@@ -1081,6 +1166,8 @@ padding-left: 2px ;
 .ai-preview-image {
   display: block;
   max-width: 100%;
+  max-height: 360px;
+  margin: 0 auto;
   image-rendering: pixelated;
   border-radius: 12px;
   background: rgba(255,255,255,.04);

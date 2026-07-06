@@ -82,9 +82,11 @@ this.AssetManager = class AssetManager {
     };
     if (this.runtime.assets[path] != null) {
       path = this.runtime.assets[path].file;
+    } else if (!/^(sprites|assets|backgrounds|ui)\//.test(path)) {
+      path = `assets/${path}`;
     }
     img = new Image;
-    img.src = `assets/${path}`;
+    img.src = path.startsWith("sprites/") || path.startsWith("assets/") || path.startsWith("backgrounds/") || path.startsWith("ui/") ? path : `assets/${path}`;
     img.onload = () => {
       var i;
       i = new msImage(img);

@@ -48,9 +48,11 @@ class @AssetManager
 
     if @runtime.assets[path]?
       path = @runtime.assets[path].file
+    else if not /^(sprites|assets|backgrounds|ui)\//.test path
+      path = "assets/#{path}"
 
     img = new Image
-    img.src = "assets/#{path}"
+    img.src = if /^(sprites|assets|backgrounds|ui)\//.test(path) then path else "assets/#{path}"
     img.onload = ()=>
       i = new msImage img
       loader.image = i

@@ -588,6 +588,27 @@ this.WebApp = class WebApp {
         }
       });
     });
+    this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/(backgrounds|ui)\/[A-Za-z0-9_-]+.png$/, (req, res) => {
+      var access, image, project, root, s, user;
+      s = req.path.split("/");
+      access = this.getProjectAccess(req, res);
+      if (access == null) {
+        return;
+      }
+      user = access.user;
+      project = access.project;
+      root = s[s.length - 2];
+      image = s[s.length - 1];
+      return this.server.content.files.read(`${user.id}/${project.id}/${root}/${image}`, "binary", (content) => {
+        if (content != null) {
+          res.setHeader("Content-Type", "image/png");
+          return res.send(content);
+        } else {
+          console.info(`couldn't read file: ${req.path}`);
+          return res.status(404).send("Error 404");
+        }
+      });
+    });
     // map files for player
     this.app.get(/^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/maps\/[A-Za-z0-9_-]+.json$/, (req, res) => {
       var access, map, project, s, user;

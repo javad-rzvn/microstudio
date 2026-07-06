@@ -517,6 +517,24 @@ class @WebApp
           console.info "couldn't read file: #{req.path}"
           res.status(404).send("Error 404")
 
+    @app.get /^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/(backgrounds|ui)\/[A-Za-z0-9_-]+.png$/,(req,res)=>
+      s = req.path.split("/")
+      access = @getProjectAccess req,res
+      return if not access?
+
+      user = access.user
+      project = access.project
+      root = s[s.length-2]
+      image = s[s.length-1]
+
+      @server.content.files.read "#{user.id}/#{project.id}/#{root}/#{image}","binary",(content)=>
+        if content?
+          res.setHeader("Content-Type", "image/png")
+          res.send content
+        else
+          console.info "couldn't read file: #{req.path}"
+          res.status(404).send("Error 404")
+
     # map files for player
     @app.get /^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/maps\/[A-Za-z0-9_-]+.json$/,(req,res)=>
       s = req.path.split("/")

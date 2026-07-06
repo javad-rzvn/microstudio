@@ -473,6 +473,16 @@ html(lang=language)
                           option(value="pixel-art") pixel art
                           option(value="simple-shapes") simple shapes
                       div
+                        label(for="ai-generator-image-style") #{translator.get("Image style")}
+                        select#ai-generator-image-style
+                          option(value="pixel-art" selected) pixel art
+                          option(value="cartoon") cartoon
+                          option(value="flat-vector") flat vector
+                          option(value="simple-shapes") simple shapes
+                          option(value="hand-drawn") hand-drawn
+                          option(value="fantasy") fantasy
+                          option(value="sci-fi") sci-fi
+                      div
                         label(for="ai-generator-aspect-ratio") #{translator.get("Aspect ratio")}
                         select#ai-generator-aspect-ratio
                           option(value="16:9" selected) 16:9
@@ -484,6 +494,28 @@ html(lang=language)
                         select#ai-generator-target-mode
                           option(value="apply_to_current_project" selected) #{translator.get("Current project")}
                           option(value="new_project") #{translator.get("New project")}
+                      div
+                        label
+                          input#ai-generator-generate-images(type="checkbox")
+                          |  #{translator.get("Generate game images")}
+                      div
+                        label(for="ai-generator-transparent-sprites") #{translator.get("Transparent sprites")}
+                        select#ai-generator-transparent-sprites
+                          option(value="true" selected) #{translator.get("Yes")}
+                          option(value="false") #{translator.get("No")}
+                      div
+                        label(for="ai-generator-asset-resolution") #{translator.get("Asset resolution")}
+                        select#ai-generator-asset-resolution
+                          option(value="32x32") 32x32
+                          option(value="64x64" selected) 64x64
+                          option(value="128x128") 128x128
+                          option(value="512x512") 512x512
+                      div#ai-generator-image-provider-row.hidden
+                        label(for="ai-generator-image-provider") #{translator.get("Image provider")}
+                        select#ai-generator-image-provider
+                          option(value="placeholder" selected) placeholder
+                          option(value="openai") OpenAI
+                          option(value="comfyui") ComfyUI
 
                     div.ai-generator-buttons
                       button#ai-generator-generate #{translator.get("Generate")}
@@ -501,6 +533,9 @@ html(lang=language)
                       h3 #{translator.get("Generated project summary")}
                       div#ai-generator-summary-empty #{translator.get("Generate a draft to see the summary, files, and preview here.")}
                       div#ai-generator-summary
+                    div.ai-generator-assets
+                      h3 #{translator.get("Generated images")}
+                      div#ai-generator-asset-gallery
                     div.ai-generator-files
                       h3 #{translator.get("Files")}
                       div#ai-generator-file-tree
