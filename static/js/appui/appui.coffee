@@ -756,7 +756,7 @@ class AppUI
       for action in [
         ["Regenerate this asset","regenerate-asset"]
         ["Edit prompt","edit-asset-prompt"]
-        [if asset.accepted then "Accepted" else "Accept asset","accept-asset"]
+        [(if asset.accepted then "Accepted" else "Accept asset"),"accept-asset"]
         ["Replace asset","replace-asset"]
       ]
         button = document.createElement "button"
