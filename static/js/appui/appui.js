@@ -553,6 +553,9 @@ AppUI = class AppUI {
     this.setAction("ai-generator-explain", () => {
       return this.explainAiDraft();
     });
+    this.setAction("ai-generator-export-json", () => {
+      return this.exportAiDraftJson();
+    });
     this.setAction("ai-generator-apply", () => {
       return this.applyAiDraft("apply_to_current_project");
     });
@@ -1224,6 +1227,38 @@ AppUI = class AppUI {
       this.setAiBusy(false);
       this.setAiStatus(err.message || "Explanation failed", true);
       return this.setAiExplanation("");
+    });
+  }
+
+  exportAiDraftJson() {
+    var json;
+    if (this.aiDraft == null) {
+      return this.setAiStatus("Generate a draft first.", true);
+    }
+    this.setAiBusy(true);
+    this.setAiStatus("Exporting draft JSON...");
+    return this.postAiRequest(`/api/ai/drafts/${this.aiDraft.id}/export`, {}).then((draft) => {
+      var blob, link, slug, url;
+      this.setAiBusy(false);
+      json = JSON.stringify(draft, null, 2);
+      blob = new Blob([json], {
+        type: "application/json"
+      });
+      url = URL.createObjectURL(blob);
+      link = document.createElement("a");
+      link.href = url;
+      slug = ((draft.project != null ? draft.project.slug : null) != null) && draft.project.slug.length > 0 ? draft.project.slug : "ai-draft";
+      link.download = `${slug}-${draft.id}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => {
+        return URL.revokeObjectURL(url);
+      }, 0);
+      return this.setAiStatus("Draft JSON exported.");
+    }, (err) => {
+      this.setAiBusy(false);
+      return this.setAiStatus(err.message || "Export failed", true);
     });
   }
 

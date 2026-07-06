@@ -486,6 +486,9 @@ class AppUI
     @setAction "ai-generator-explain",()=>
       @explainAiDraft()
 
+    @setAction "ai-generator-export-json",()=>
+      @exportAiDraftJson()
+
     @setAction "ai-generator-apply",()=>
       @applyAiDraft "apply_to_current_project"
 
@@ -1267,6 +1270,32 @@ class AppUI
       @setAiBusy false
       @setAiStatus(err.message or "Explanation failed", true)
       @setAiExplanation ""
+    )
+
+  exportAiDraftJson:()->
+    return @setAiStatus("Generate a draft first.",true) if not @aiDraft?
+    @setAiBusy true
+    @setAiStatus "Exporting draft JSON..."
+    @postAiRequest("/api/ai/drafts/#{@aiDraft.id}/export",{}).then((draft)=>
+      @setAiBusy false
+      json = JSON.stringify draft,null,2
+      blob = new Blob [json],
+        type: "application/json"
+      url = URL.createObjectURL blob
+      link = document.createElement "a"
+      link.href = url
+      slug = if draft.project?.slug? and draft.project.slug.length > 0 then draft.project.slug else "ai-draft"
+      link.download = "#{slug}-#{draft.id}.json"
+      document.body.appendChild link
+      link.click()
+      link.remove()
+      window.setTimeout ()=>
+        URL.revokeObjectURL url
+      ,0
+      @setAiStatus "Draft JSON exported."
+    ,(err)=>
+      @setAiBusy false
+      @setAiStatus(err.message or "Export failed", true)
     )
 
   applyAiDraft:(mode)->

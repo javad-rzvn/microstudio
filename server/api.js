@@ -98,6 +98,10 @@ this.API = (function() {
       return this.handleAiRegenerateImage(req, res);
     });
 
+    this.app.post(/^\/api\/ai\/drafts\/(\d+)\/export\/?$/, async (req, res) => {
+      return this.handleAiExportDraft(req, res);
+    });
+
     this.app.post(/^\/api\/ai\/apply-game\/?$/, async (req, res) => {
       return this.handleAiApply(req, res);
     });
@@ -299,6 +303,25 @@ this.API = (function() {
     } catch (err) {
       return this.handleAiError(res, err);
     }
+  };
+
+  API.prototype.handleAiExportDraft = function(req, res) {
+    var draft, draftRecord, user;
+    user = this.getCurrentUser(req);
+    if (user == null) {
+      return this.sendError(res, 401, "not connected");
+    }
+    draftRecord = this.ai.getDraftRecord(req.params[0]);
+    if (draftRecord == null) {
+      return this.sendError(res, 404, "draft not found");
+    }
+    draft = draftRecord.get();
+    if ((draft != null ? draft.userId : void 0) != null && draft.userId !== user.id && !(user.flags != null && user.flags.admin)) {
+      return this.sendError(res, 403, "You must own the target draft");
+    }
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Disposition", `attachment; filename="ai-draft-${req.params[0]}.json"`);
+    return res.send(JSON.stringify(draft, null, 2));
   };
 
   API.prototype.handleAdminAiProviders = function(req, res) {

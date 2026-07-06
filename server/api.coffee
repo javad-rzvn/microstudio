@@ -79,6 +79,9 @@ class @API
     @app.post /^\/api\/ai\/regenerate-image\/?$/, (req,res)=>
       @handleAiRegenerateImage req,res
 
+    @app.post /^\/api\/ai\/drafts\/(\d+)\/export\/?$/, (req,res)=>
+      @handleAiExportDraft req,res
+
     @app.post /^\/api\/ai\/apply-game\/?$/, (req,res)=>
       @handleAiApply req,res
 
@@ -203,6 +206,18 @@ class @API
     ).catch((err)=>
       @handleAiError res,err
     )
+
+  handleAiExportDraft:(req,res)->
+    user = @getCurrentUser req
+    return @sendError res,401,"not connected" if not user?
+    draftRecord = @ai.getDraftRecord req.params[0]
+    return @sendError res,404,"draft not found" if not draftRecord?
+    draft = draftRecord.get()
+    if draft?.userId? and draft.userId != user.id and not user.flags?.admin
+      return @sendError res,403,"You must own the target draft"
+    res.setHeader "Content-Type","application/json"
+    res.setHeader "Content-Disposition","attachment; filename=\"ai-draft-#{req.params[0]}.json\""
+    res.send JSON.stringify(draft,null,2)
 
   handleAdminAiProviders:(req,res)->
     user = @ensureAdmin req,res
