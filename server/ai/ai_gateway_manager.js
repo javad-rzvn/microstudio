@@ -93,6 +93,22 @@ class AiGatewayManager {
       return requested;
     }
 
+    const configuredGateway = this.server && this.server.config && this.server.config.ai_gateway ? this.server.config.ai_gateway : null;
+    const configuredId = configuredGateway && configuredGateway.providerProfileId != null && String(configuredGateway.providerProfileId).length > 0 ? String(configuredGateway.providerProfileId) : null;
+    if (configuredId) {
+      const configured = this.store.getRuntimeById(configuredId);
+      if (!configured) {
+        throw safeError("Requested provider profile not found");
+      }
+      if (configured.enabled === false) {
+        throw safeError("Requested provider profile is disabled");
+      }
+      if (normalizePurpose(configured.purpose) !== normalizePurpose(purpose) && normalizePurpose(configured.purpose) !== "both") {
+        throw safeError("Requested provider profile is not available for this purpose");
+      }
+      return configured;
+    }
+
     const storedDefault = this.store.getRuntimeDefault(purpose);
     if (storedDefault) {
       return storedDefault;

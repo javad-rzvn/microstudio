@@ -473,6 +473,9 @@ class AppUI
     @aiSelectedPath = null
     @aiBusy = false
     @aiProviderProfiles = []
+    @aiAdminProviders = []
+    @aiProviderAdminOpen = false
+    @aiProviderDraftId = null
 
     @setAction "ai-generator-generate",()=>
       @generateAiDraft()
@@ -491,6 +494,21 @@ class AppUI
 
     @setAction "ai-generator-cancel",()=>
       @setSection "code",true
+
+    @setAction "ai-provider-admin-button",()=>
+      @toggleAiProviderAdminPanel()
+
+    @setAction "ai-provider-admin-refresh",()=>
+      @loadAiAdminProviders()
+
+    @setAction "ai-provider-save",()=>
+      @saveAiProvider()
+
+    @setAction "ai-provider-new",()=>
+      @showAiProviderEditor null
+
+    @setAction "ai-provider-cancel",()=>
+      @showAiProviderEditor null
 
     fileTree = @get("ai-generator-file-tree")
     fileTree.addEventListener "click",(event)=>
@@ -515,6 +533,23 @@ class AppUI
         @handleAiAssetAction action,assetId
       else if assetId?
         @selectAiDraftAsset assetId
+
+    adminList = @get("ai-provider-admin-list")
+    adminList.addEventListener "click",(event)=>
+      target = event.target
+      while target? and target != adminList and not target.dataset?.action?
+        target = target.parentNode
+      return if not target? or not target.dataset?.action?
+      providerId = target.dataset.providerId
+      switch target.dataset.action
+        when "edit-provider"
+          @showAiProviderEditor @findAiProviderAdminProfile(providerId)
+        when "test-provider"
+          @testAiProvider providerId
+        when "delete-provider"
+          @deleteAiProvider providerId
+        when "set-default-provider"
+          @setDefaultAiProvider providerId
 
     @get("ai-generator-target-mode").addEventListener "change",()=>
       @updateAiGeneratorButtons()
@@ -548,6 +583,7 @@ class AppUI
 
     @updateAiProviderVisibility()
     @loadAiProviders()
+    @updateAiProviderAdminVisibility()
     @renderAiDraft null
 
   clearAiDraft:()->
@@ -628,6 +664,216 @@ class AppUI
       select.innerHTML = ""
       select.appendChild new Option "Use server default",""
       []
+
+  requestJson:(method,url,payload=null)->
+    options =
+      method: method
+      credentials: "same-origin"
+      headers:
+        "Content-Type": "application/json"
+    if payload?
+      options.body = JSON.stringify payload
+    fetch url,options
+    .then (response)=>
+      response.text().then (text)=>
+        data = null
+        if text? and text.length > 0
+          try
+            data = JSON.parse text
+          catch error
+            data =
+              error: text
+        if not response.ok
+          err = new Error((if data? then data.error else null) or response.statusText or "Request failed")
+          err.response = data
+          throw err
+        data
+
+  updateAiProviderAdminVisibility:()->
+    button = @get("ai-provider-admin-button")
+    panel = @get("ai-provider-admin-panel")
+    isAdmin = @app.user? and @app.user.flags? and @app.user.flags.admin
+    if button?
+      button.classList.toggle "hidden", not isAdmin
+    if not panel?
+      return
+    if not isAdmin
+      @aiProviderAdminOpen = false
+      panel.classList.add "hidden"
+      return
+    panel.classList.toggle "hidden", not @aiProviderAdminOpen
+
+  toggleAiProviderAdminPanel:()->
+    return if not (@app.user? and @app.user.flags? and @app.user.flags.admin)
+    @aiProviderAdminOpen = not @aiProviderAdminOpen
+    @updateAiProviderAdminVisibility()
+    if @aiProviderAdminOpen
+      @loadAiAdminProviders(@aiProviderDraftId)
+
+  setAiProviderAdminStatus:(text,isError=false)->
+    element = @get("ai-provider-admin-status")
+    return if not element?
+    element.textContent = text or ""
+    element.style.color = if isError then "#fecaca" else "rgba(191,219,254,.95)"
+
+  findAiProviderAdminProfile:(providerId)->
+    for provider in @aiAdminProviders or []
+      if "#{provider.id}" == "#{providerId}"
+        return provider
+    null
+
+  showAiProviderEditor:(provider)->
+    @aiProviderDraftId = if provider? then "#{provider.id}" else null
+    @get("ai-provider-name").value = if provider? then provider.name or "" else ""
+    @get("ai-provider-type").value = if provider? then provider.type or "openai-compatible" else "openai-compatible"
+    @get("ai-provider-purpose").value = if provider? then provider.purpose or "text" else "text"
+    @get("ai-provider-base-url").value = if provider? then provider.baseUrl or "" else ""
+    @get("ai-provider-model-id").value = if provider? then provider.modelId or "" else ""
+    @get("ai-provider-api-key").value = ""
+    @get("ai-provider-temperature").value = if provider? and provider.temperature? then "#{provider.temperature}" else "0.3"
+    @get("ai-provider-max-tokens").value = if provider? and provider.maxTokens? then "#{provider.maxTokens}" else "4000"
+    @get("ai-provider-timeout-ms").value = if provider? and provider.timeoutMs? then "#{provider.timeoutMs}" else "60000"
+    @get("ai-provider-enabled").checked = if provider? then provider.enabled != false else true
+    @get("ai-provider-default").checked = if provider? then provider.isDefault == true else false
+    @setAiProviderAdminStatus if provider? then "Editing provider #{provider.id}" else "Creating new provider"
+    @renderAiProviderAdminList @aiAdminProviders or []
+
+  collectAiProviderPayload:()->
+    payload =
+      name: @get("ai-provider-name").value.trim()
+      type: @get("ai-provider-type").value
+      purpose: @get("ai-provider-purpose").value
+      baseUrl: @get("ai-provider-base-url").value.trim()
+      modelId: @get("ai-provider-model-id").value.trim()
+      temperature: parseFloat(@get("ai-provider-temperature").value or "0.3")
+      maxTokens: parseInt(@get("ai-provider-max-tokens").value or "4000",10)
+      timeoutMs: parseInt(@get("ai-provider-timeout-ms").value or "60000",10)
+      enabled: @get("ai-provider-enabled").checked
+      isDefault: @get("ai-provider-default").checked
+    apiKey = @get("ai-provider-api-key").value.trim()
+    if apiKey.length > 0
+      payload.apiKey = apiKey
+    else if not @aiProviderDraftId?
+      payload.apiKey = ""
+    payload
+
+  renderAiProviderAdminList:(providers)->
+    container = @get("ai-provider-admin-list")
+    return if not container?
+    container.innerHTML = ""
+    selectedId = @aiProviderDraftId
+    for provider in providers or []
+      row = document.createElement "div"
+      row.classList.add "ai-provider-row"
+      row.classList.add "selected" if "#{provider.id}" == "#{selectedId}"
+      meta = document.createElement "div"
+      meta.classList.add "ai-provider-row-meta"
+      meta.innerHTML = "<strong></strong><span></span><span></span><span></span>"
+      meta.childNodes[0].textContent = "#{provider.name}#{if provider.isDefault then " (default)" else ""}"
+      meta.childNodes[1].textContent = "#{provider.type} / #{provider.purpose} / #{provider.modelId or ""}"
+      meta.childNodes[2].textContent = provider.baseUrl or ""
+      meta.childNodes[3].textContent = if provider.enabled == false then "disabled" else if provider.hasApiKey then "key stored" else "no key"
+      actions = document.createElement "div"
+      actions.classList.add "ai-provider-row-actions"
+      for action in [
+        ["Edit","edit-provider"]
+        ["Test","test-provider"]
+        ["Default","set-default-provider"]
+        ["Delete","delete-provider"]
+      ]
+        button = document.createElement "button"
+        button.textContent = action[0]
+        button.dataset.action = action[1]
+        button.dataset.providerId = "#{provider.id}"
+        actions.appendChild button
+      row.appendChild meta
+      row.appendChild actions
+      container.appendChild row
+
+  loadAiAdminProviders:(selectedId=null)->
+    return Promise.resolve([]) if not (@app.user? and @app.user.flags? and @app.user.flags.admin)
+    @setAiProviderAdminStatus "Loading provider profiles..."
+    @requestJson("GET","/api/admin/ai/providers?purpose=text").then((data)=>
+      providers = if Array.isArray(data?.providers) then data.providers else []
+      @aiAdminProviders = providers
+      @renderAiProviderAdminList providers
+      chosen = null
+      if selectedId?
+        chosen = @findAiProviderAdminProfile selectedId
+      else if @aiProviderDraftId?
+        chosen = @findAiProviderAdminProfile @aiProviderDraftId
+      else if providers.length > 0
+        chosen = providers[0]
+      if chosen?
+        @showAiProviderEditor chosen
+      @setAiProviderAdminStatus "Loaded #{providers.length} provider profiles."
+      providers
+    ,(err)=>
+      @aiAdminProviders = []
+      @renderAiProviderAdminList []
+      @setAiProviderAdminStatus err.message or "Failed to load provider profiles",true
+      []
+
+  saveAiProvider:()->
+    return if not (@app.user? and @app.user.flags? and @app.user.flags.admin)
+    payload = @collectAiProviderPayload()
+    if not payload.name.length or not payload.baseUrl.length or not payload.modelId.length
+      @setAiProviderAdminStatus "Name, base URL, and model ID are required.",true
+      return
+    if @aiProviderDraftId?
+      url = "/api/admin/ai/providers/#{@aiProviderDraftId}"
+      method = "PATCH"
+    else
+      url = "/api/admin/ai/providers"
+      method = "POST"
+    @setAiProviderAdminStatus "Saving provider..."
+    @requestJson(method,url,payload).then((data)=>
+      provider = data?.provider or null
+      @setAiProviderAdminStatus "Provider saved."
+      selected = if provider? then provider.id else @aiProviderDraftId
+      @loadAiAdminProviders selected
+      @loadAiProviders selected
+      if provider?
+        @showAiProviderEditor provider
+    ,(err)=>
+      @setAiProviderAdminStatus err.message or "Failed to save provider",true
+    )
+
+  deleteAiProvider:(providerId)->
+    return if not providerId?
+    if not confirm "Delete this provider profile?"
+      return
+    @setAiProviderAdminStatus "Deleting provider..."
+    @requestJson("DELETE","/api/admin/ai/providers/#{providerId}").then((data)=>
+      @setAiProviderAdminStatus "Provider deleted."
+      wasSelected = "#{@aiProviderDraftId}" == "#{providerId}"
+      @aiProviderDraftId = null if wasSelected
+      @showAiProviderEditor null if wasSelected
+      @loadAiAdminProviders()
+      @loadAiProviders()
+    ,(err)=>
+      @setAiProviderAdminStatus err.message or "Failed to delete provider",true
+    )
+
+  testAiProvider:(providerId)->
+    return if not providerId?
+    @setAiProviderAdminStatus "Testing provider..."
+    @requestJson("POST","/api/admin/ai/providers/#{providerId}/test",{}).then((data)=>
+      @setAiProviderAdminStatus "Test ok: #{data.providerName or data.providerId}"
+    ,(err)=>
+      @setAiProviderAdminStatus err.message or "Provider test failed",true
+    )
+
+  setDefaultAiProvider:(providerId)->
+    return if not providerId?
+    @setAiProviderAdminStatus "Setting default provider..."
+    @requestJson("POST","/api/admin/ai/providers/#{providerId}/set-default",{}).then((data)=>
+      @setAiProviderAdminStatus "Default provider updated."
+      @loadAiAdminProviders providerId
+      @loadAiProviders providerId
+    ,(err)=>
+      @setAiProviderAdminStatus err.message or "Failed to set default provider",true
+    )
 
   updateAiGeneratorButtons:()->
     draftReady = @aiDraft?
@@ -1261,6 +1507,7 @@ class AppUI
       @addWarningMessage text,undefined,"out_of_storage",false
     @updateAiProviderVisibility()
     @loadAiProviders()
+    @loadAiAdminProviders() if @app.user.flags? and @app.user.flags.admin
     #if not @project?
     #  @show "myprojects"
     #  @hide "projectview"
@@ -1275,6 +1522,9 @@ class AppUI
     @nick = null
     @clearAiDraft()
     @project = null
+    @aiAdminProviders = []
+    @aiProviderDraftId = null
+    @aiProviderAdminOpen = false
     @updateAiProviderVisibility()
     #@get("user-info").style.display = "none"
 
@@ -1494,6 +1744,7 @@ class AppUI
     row.classList.toggle "hidden", not isAdmin
     if @get("ai-generator-image-provider")?
       @get("ai-generator-image-provider").disabled = not isAdmin
+    @updateAiProviderAdminVisibility()
 
   updateProjectTitle:()->
     if @project?
