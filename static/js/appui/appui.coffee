@@ -500,6 +500,9 @@ class AppUI
     @setAction "ai-generator-cancel",()=>
       @cancelAiRequest()
 
+    @setAction "ai-generator-improve",()=>
+      @improveAiIdeaPrompt()
+
     @setAction "ai-provider-admin-button",()=>
       @toggleAiProviderAdminPanel()
 
@@ -1310,12 +1313,14 @@ class AppUI
   updateAiGeneratorButtons:()->
     draftReady = @aiDraft?
     targetMode = if @get("ai-generator-target-mode")? then @get("ai-generator-target-mode").value else "apply_to_current_project"
+    ideaText = if @get("ai-generator-idea")? then @get("ai-generator-idea").value.trim() else ""
     generateImages = if @get("ai-generator-generate-images")? then @get("ai-generator-generate-images").checked else false
     canGenerate = not @aiBusy
     canRegenerate = draftReady and not @aiBusy
     canExplain = draftReady and not @aiBusy
     canApply = draftReady and not @aiBusy and targetMode == "apply_to_current_project"
     for id in [
+      "ai-generator-improve"
       "ai-generator-generate"
       "ai-generator-regenerate"
       "ai-generator-apply"
@@ -1325,6 +1330,8 @@ class AppUI
       element = @get(id)
       continue if not element?
       switch id
+        when "ai-generator-improve"
+          element.disabled = ideaText.length == 0
         when "ai-generator-generate"
           element.disabled = not canGenerate
         when "ai-generator-regenerate"
@@ -1622,6 +1629,69 @@ class AppUI
       includeDocs: true
       includeTutorialComments: true
 
+  normalizeAiIdeaText:(text)->
+    String(text or "").replace(/\s+/g, " ").trim()
+
+  stripAiIdeaBoilerplate:(idea)->
+    text = @normalizeAiIdeaText idea
+    return "" if not text
+
+    patterns = [
+      /^(?:please\s+)?(?:create|make|build|generate|design|develop)\s+(?:a|an|the)?\s*(?:simple|basic|small|fun|cool|good|interesting)?\s*(?:2d|2-d|2d\s+)?(?:game|video game|starter|demo|prototype)\b[\s,:-]*/i
+      /^(?:create|make|build|generate)\s+(?:a|an|the)?\s*(?:simple|basic)?\s*(?:2d|2-d|2d\s+)?game\b[\s,:-]*/i
+      /^(?:game\s+idea|idea|prompt)\s*[\s,:-]*/i
+    ]
+
+    changed = true
+    while changed
+      changed = false
+      for pattern in patterns
+        nextText = text.replace pattern,""
+        if nextText != text
+          text = nextText.trim()
+          changed = true
+
+    text = text.replace /^(?:which|that|where|to|for|about)\s+/i,""
+    text = text.replace /\bthe\s+the\b/gi,"the"
+    text = text.replace /\s{2,}/g," "
+    text.trim()
+
+  buildImprovedAiIdeaPrompt:(idea)->
+    rawIdea = @normalizeAiIdeaText idea
+    return "" if not rawIdea
+
+    cleanedIdea = @stripAiIdeaBoilerplate rawIdea
+    if not cleanedIdea
+      cleanedIdea = rawIdea
+
+    selectedLanguage = if @get("ai-generator-language")? then @get("ai-generator-language").value else "microScript"
+    languageLabel = if selectedLanguage == "microStudioJavaScript" then "microStudio JavaScript" else "microScript"
+    physics = if @get("ai-generator-physics")? then @get("ai-generator-physics").value else "auto"
+    difficulty = if @get("ai-generator-difficulty")? then @get("ai-generator-difficulty").value else "beginner"
+    artStyle = if @get("ai-generator-art-style")? then @get("ai-generator-art-style").value else "placeholder"
+    aspectRatio = if @get("ai-generator-aspect-ratio")? then @get("ai-generator-aspect-ratio").value else "16:9"
+    isLearningOrSimulation = /learn|teach|understand|help|get to know|application|magnif|zoom|paper|text|read|simulation|simulate|educat/i.test cleanedIdea.toLowerCase()
+    focus = if isLearningOrSimulation then "an educational or simulation-style interaction that teaches the subject through play" else "a playable starter that stays focused on the requested mechanic"
+
+    [
+      "Create a 2D game about #{cleanedIdea}."
+      "Make it a #{languageLabel} starter that is playable in microStudio."
+      "Treat the concept as #{focus}."
+      "Core rules:"
+      "- Preserve the actual mechanic and subject from the idea."
+      "- Use controls that match the concept instead of forcing a generic arcade loop."
+      "- Include a clear objective, restart flow, and visible success or failure feedback."
+      "- Keep state bounded and the implementation small."
+      "- Use microStudio-native APIs only: screen, keyboard, mouse, touch, audio, sprites, maps, and system."
+      "- Avoid browser canvas and DOM APIs."
+      "Settings:"
+      "- Physics: #{physics}"
+      "- Difficulty: #{difficulty}"
+      "- Art style: #{artStyle}"
+      "- Aspect ratio: #{aspectRatio}"
+      "If the idea is educational or simulation-focused, emphasize the real-world behavior the player should learn by doing."
+    ].join("\n")
+
   postAiRequest:(url,payload)->
     controller = null
     if window.AbortController?
@@ -1716,6 +1786,24 @@ class AppUI
       @setAiStatus(err.message or "Explanation failed", true)
       @setAiExplanation ""
     )
+
+  improveAiIdeaPrompt:()->
+    ideaInput = @get("ai-generator-idea")
+    return if not ideaInput?
+    idea = ideaInput.value.trim()
+    if not idea.length
+      @setAiStatus "Write a game idea first, then improve it.", true
+      return
+
+    improved = @buildImprovedAiIdeaPrompt idea
+    if not improved.length
+      @setAiStatus "Could not improve the prompt.", true
+      return
+
+    ideaInput.value = improved
+    ideaInput.focus()
+    @updateAiGeneratorButtons()
+    @setAiStatus "Expanded the prompt with gameplay rules and microStudio details."
 
   exportAiDraftJson:()->
     return @setAiStatus("Generate a draft first.",true) if not @aiDraft?

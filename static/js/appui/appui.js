@@ -1203,6 +1203,9 @@ AppUI = class AppUI {
     this.setAction("ai-generator-cancel", () => {
       return this.cancelAiRequest();
     });
+    this.setAction("ai-generator-improve", () => {
+      return this.improveAiIdeaPrompt();
+    });
     this.setAction("ai-provider-admin-button", () => {
       return this.toggleAiProviderAdminPanel();
     });
@@ -1452,20 +1455,24 @@ AppUI = class AppUI {
   }
 
   updateAiGeneratorButtons() {
-    var canApply, canExplain, canGenerate, canRegenerate, draftReady, element, i, len, ref, targetMode;
+    var canApply, canExplain, canGenerate, canRegenerate, draftReady, element, i, ideaText, len, ref, targetMode;
     draftReady = this.aiDraft != null;
     targetMode = this.get("ai-generator-target-mode") != null ? this.get("ai-generator-target-mode").value : "apply_to_current_project";
+    ideaText = this.get("ai-generator-idea") != null ? this.get("ai-generator-idea").value.trim() : "";
     canGenerate = !this.aiBusy;
     canRegenerate = draftReady && !this.aiBusy;
     canExplain = draftReady && !this.aiBusy;
     canApply = draftReady && !this.aiBusy && targetMode === "apply_to_current_project";
-    ref = ["ai-generator-generate", "ai-generator-regenerate", "ai-generator-apply", "ai-generator-create-new", "ai-generator-explain"];
+    ref = ["ai-generator-improve", "ai-generator-generate", "ai-generator-regenerate", "ai-generator-apply", "ai-generator-create-new", "ai-generator-explain"];
     for (i = 0, len = ref.length; i < len; i++) {
       element = this.get(ref[i]);
       if (element == null) {
         continue;
       }
       switch (ref[i]) {
+        case "ai-generator-improve":
+          element.disabled = ideaText.length === 0;
+          break;
         case "ai-generator-generate":
           element.disabled = !canGenerate;
           break;
@@ -1862,6 +1869,73 @@ AppUI = class AppUI {
     return payload;
   }
 
+  normalizeAiIdeaText(text) {
+    return String(text || "").replace(/\s+/g, " ").trim();
+  }
+
+  stripAiIdeaBoilerplate(idea) {
+    var changed, nextText, pattern, patterns, text;
+    text = this.normalizeAiIdeaText(idea);
+    if (!text) {
+      return "";
+    }
+    patterns = [/^(?:please\s+)?(?:create|make|build|generate|design|develop)\s+(?:a|an|the)?\s*(?:simple|basic|small|fun|cool|good|interesting)?\s*(?:2d|2-d|2d\s+)?(?:game|video game|starter|demo|prototype)\b[\s,:-]*/i, /^(?:create|make|build|generate)\s+(?:a|an|the)?\s*(?:simple|basic)?\s*(?:2d|2-d|2d\s+)?game\b[\s,:-]*/i, /^(?:game\s+idea|idea|prompt)\s*[\s,:-]*/i];
+    changed = true;
+    while (changed) {
+      changed = false;
+      for (let _i = 0, _len = patterns.length; _i < _len; _i++) {
+        pattern = patterns[_i];
+        nextText = text.replace(pattern, "");
+        if (nextText !== text) {
+          text = nextText.trim();
+          changed = true;
+        }
+      }
+    }
+    text = text.replace(/^(?:which|that|where|to|for|about)\s+/i, "");
+    text = text.replace(/\bthe\s+the\b/gi, "the");
+    text = text.replace(/\s{2,}/g, " ");
+    return text.trim();
+  }
+
+  buildImprovedAiIdeaPrompt(idea) {
+    var aspectRatio, artStyle, cleanedIdea, difficulty, focus, isLearningOrSimulation, languageLabel, physics, rawIdea, selectedLanguage;
+    rawIdea = this.normalizeAiIdeaText(idea);
+    if (!rawIdea.length) {
+      return "";
+    }
+    cleanedIdea = this.stripAiIdeaBoilerplate(rawIdea);
+    if (!cleanedIdea.length) {
+      cleanedIdea = rawIdea;
+    }
+    selectedLanguage = this.get("ai-generator-language") != null ? this.get("ai-generator-language").value : "microScript";
+    languageLabel = selectedLanguage === "microStudioJavaScript" ? "microStudio JavaScript" : "microScript";
+    physics = this.get("ai-generator-physics") != null ? this.get("ai-generator-physics").value : "auto";
+    difficulty = this.get("ai-generator-difficulty") != null ? this.get("ai-generator-difficulty").value : "beginner";
+    artStyle = this.get("ai-generator-art-style") != null ? this.get("ai-generator-art-style").value : "placeholder";
+    aspectRatio = this.get("ai-generator-aspect-ratio") != null ? this.get("ai-generator-aspect-ratio").value : "16:9";
+    isLearningOrSimulation = /learn|teach|understand|help|get to know|application|magnif|zoom|paper|text|read|simulation|simulate|educat/i.test(cleanedIdea.toLowerCase());
+    focus = isLearningOrSimulation ? "an educational or simulation-style interaction that teaches the subject through play" : "a playable starter that stays focused on the requested mechanic";
+    return [
+      `Create a 2D game about ${cleanedIdea}.`,
+      `Make it a ${languageLabel} starter that is playable in microStudio.`,
+      `Treat the concept as ${focus}.`,
+      "Core rules:",
+      "- Preserve the actual mechanic and subject from the idea.",
+      "- Use controls that match the concept instead of forcing a generic arcade loop.",
+      "- Include a clear objective, restart flow, and visible success or failure feedback.",
+      "- Keep state bounded and the implementation small.",
+      "- Use microStudio-native APIs only: screen, keyboard, mouse, touch, audio, sprites, maps, and system.",
+      "- Avoid browser canvas and DOM APIs.",
+      "Settings:",
+      `- Physics: ${physics}`,
+      `- Difficulty: ${difficulty}`,
+      `- Art style: ${artStyle}`,
+      `- Aspect ratio: ${aspectRatio}`,
+      "If the idea is educational or simulation-focused, emphasize the real-world behavior the player should learn by doing."
+    ].join("\n");
+  }
+
   postAiRequest(url, payload) {
     var controller, options;
     controller = null;
@@ -1982,6 +2056,28 @@ AppUI = class AppUI {
       this.setAiStatus(err.message || "Explanation failed", true);
       return this.setAiExplanation("");
     });
+  }
+
+  improveAiIdeaPrompt() {
+    var idea, ideaInput, improved;
+    ideaInput = this.get("ai-generator-idea");
+    if (ideaInput == null) {
+      return;
+    }
+    idea = ideaInput.value.trim();
+    if (!idea.length) {
+      this.setAiStatus("Write a game idea first, then improve it.", true);
+      return;
+    }
+    improved = this.buildImprovedAiIdeaPrompt(idea);
+    if (!improved.length) {
+      this.setAiStatus("Could not improve the prompt.", true);
+      return;
+    }
+    ideaInput.value = improved;
+    ideaInput.focus();
+    this.updateAiGeneratorButtons();
+    return this.setAiStatus("Expanded the prompt with gameplay rules and microStudio details.");
   }
 
   exportAiDraftJson() {

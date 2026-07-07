@@ -455,8 +455,12 @@ html(lang=language, dir=language == "fa" ? "rtl" : "ltr")
                   button#ai-provider-admin-button.hidden(type="button") #{translator.get("Manage provider profiles")}
                 div.ai-generator-layout
                   div.ai-generator-form
-                    label(for="ai-generator-idea") #{translator.get("Game idea")}
-                    textarea#ai-generator-idea(rows="8" placeholder="Create a 2D physics puzzle game where the player drops balls into baskets.")
+                    div.ai-generator-idea-row
+                      div.ai-generator-idea-header
+                        label(for="ai-generator-idea") #{translator.get("Game idea")}
+                        button#ai-generator-improve(type="button" title=translator.get("Expand the idea with gameplay rules, constraints, and microStudio-native details.")) #{translator.get("Improve prompt")}
+                      textarea#ai-generator-idea(rows="8" placeholder="Create a 2D physics puzzle game where the player drops balls into baskets.")
+                      div.ai-generator-idea-help #{translator.get("Expand the idea with controls, success conditions, and microStudio-native rules before generating.")}
 
                     div.ai-generator-grid
                       div
