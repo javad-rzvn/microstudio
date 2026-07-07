@@ -786,9 +786,17 @@ function isTopDownAdventureRequest(request) {
   return /top[-\s]?down|overhead|overworld|dungeon|dungeon crawler|quest|exploration|rpg|zelda[-\s]?like|action[-\s]?adventure|maze|adventure game/.test(text);
 }
 
+function isPuzzlePlatformerRequest(request) {
+  const text = `${request && request.idea ? request.idea : ""} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
+  return /puzzle[-\s]?platformer|platform[-\s]?puzzle|platforming puzzle|puzzle[-\s]?platform|key and door|switch puzzle|block puzzle platformer|platformer puzzle/.test(text);
+}
+
 function fallbackGenreName(request) {
   if (isTicTacToeRequest(request)) {
     return "ticTacToe";
+  }
+  if (isPuzzlePlatformerRequest(request)) {
+    return "puzzlePlatformer";
   }
   if (isPlatformerRequest(request)) {
     return "platformer";
@@ -798,6 +806,9 @@ function fallbackGenreName(request) {
   }
   if (isPuzzleRequest(request)) {
     return "puzzle";
+  }
+  if (isPuzzlePlatformerRequest(request)) {
+    return "puzzlePlatformer";
   }
   if (isRacingRequest(request)) {
     return "racing";
@@ -1282,6 +1293,342 @@ function draw() {
 
   if (game.finished) {
     screen.drawText("Adventure complete", 0, -6, 10, "#86efac");
+  }
+}
+`;
+}
+
+function buildMicroStudioJavaScriptPuzzlePlatformerFallbackGameCodeLegacy(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
+  const description = JSON.stringify((plan.project && plan.project.description) || "");
+  const controlsText = JSON.stringify("Arrow keys to move | Space to jump | R to restart");
+  return `// ${title}
+// ${description}
+// Safe microStudio JavaScript puzzle-platformer starter.
+
+const game = {
+  player: {
+    x: -72,
+    y: 58,
+    vx: 0,
+    vy: 0,
+    w: 12,
+    h: 16,
+    grounded: false
+  },
+  platforms: [
+    { x: 0, y: 84, w: 220, h: 18 },
+    { x: -64, y: 44, w: 72, h: 10 },
+    { x: 20, y: 12, w: 74, h: 10 },
+    { x: -84, y: -24, w: 50, h: 10 },
+    { x: 10, y: -56, w: 66, h: 10 }
+  ],
+  key: { x: -54, y: 28, w: 8, h: 8, collected: false },
+  exit: { x: 92, y: -72, w: 14, h: 32 },
+  hasKey: false,
+  gameOver: false,
+  win: false,
+  message: "Collect the key and reach the exit."
+};
+
+const titleText = ${title};
+const controlsText = ${controlsText};
+
+function resetGame() {
+  game.player.x = -72;
+  game.player.y = 58;
+  game.player.vx = 0;
+  game.player.vy = 0;
+  game.player.grounded = false;
+  game.key.collected = false;
+  game.hasKey = false;
+  game.gameOver = false;
+  game.win = false;
+  game.message = "Collect the key and reach the exit.";
+}
+
+function rectsOverlap(ax, ay, aw, ah, bx, byPos, bw, bh) {
+  return Math.abs(ax - bx) < (aw + bw) * 0.5 && Math.abs(ay - byPos) < (ah + bh) * 0.5;
+}
+
+function updatePlayer() {
+  const previousY = game.player.y;
+
+  if (keyboard.LEFT) {
+    game.player.vx -= 0.45;
+  }
+  if (keyboard.RIGHT) {
+    game.player.vx += 0.45;
+  }
+  if ((keyboard.press.SPACE || keyboard.press.UP || keyboard.press.KEY_Z) && game.player.grounded) {
+    game.player.vy = -8.5;
+    game.player.grounded = false;
+  }
+
+  game.player.vx *= 0.88;
+  game.player.vy += 0.42;
+  if (game.player.vy > 9) {
+    game.player.vy = 9;
+  }
+
+  game.player.x += game.player.vx;
+  game.player.y += game.player.vy;
+  game.player.grounded = false;
+
+  if (game.player.x < -104) {
+    game.player.x = -104;
+    game.player.vx = 0;
+  }
+  if (game.player.x > 104) {
+    game.player.x = 104;
+    game.player.vx = 0;
+  }
+  if (game.player.y > 104) {
+    game.player.y = 104;
+    game.player.vy = 0;
+    game.player.grounded = true;
+  }
+
+  for (let i = 0; i < game.platforms.length; i += 1) {
+    const platform = game.platforms[i];
+    if (!rectsOverlap(game.player.x, game.player.y, game.player.w, game.player.h, platform.x, platform.y, platform.w, platform.h)) {
+      continue;
+    }
+    const platformTop = platform.y - platform.h * 0.5;
+    const playerBottomBeforeMove = previousY + game.player.h * 0.5;
+    if (game.player.vy >= 0 && playerBottomBeforeMove <= platformTop + 6) {
+      game.player.y = platformTop - game.player.h * 0.5;
+      game.player.vy = 0;
+      game.player.grounded = true;
+    }
+  }
+}
+
+function updatePuzzleState() {
+  if (!game.key.collected && rectsOverlap(game.player.x, game.player.y, game.player.w, game.player.h, game.key.x, game.key.y, game.key.w, game.key.h)) {
+    game.key.collected = true;
+    game.hasKey = true;
+    game.message = "Key found. Reach the exit.";
+  }
+  if (!game.hasKey && rectsOverlap(game.player.x, game.player.y, game.player.w, game.player.h, game.exit.x, game.exit.y, game.exit.w, game.exit.h)) {
+    game.message = "Find the key first.";
+  }
+  if (game.hasKey && rectsOverlap(game.player.x, game.player.y, game.player.w, game.player.h, game.exit.x, game.exit.y, game.exit.w, game.exit.h)) {
+    game.win = true;
+    game.gameOver = true;
+    game.message = "Exit reached. Press R to restart.";
+  }
+}
+
+function init() {
+  resetGame();
+}
+
+function update() {
+  if (keyboard.press.KEY_R || keyboard.press.SPACE) {
+    resetGame();
+    return;
+  }
+  if (game.gameOver) {
+    return;
+  }
+
+  updatePlayer();
+  updatePuzzleState();
+}
+
+function draw() {
+  screen.fillRect(0, 0, screen.width, screen.height, "#07111f");
+  screen.drawText(titleText, 0, -92, 8, "#dbeafe");
+  screen.drawText(game.message, 0, 92, 5, "#cbd5e1");
+  screen.drawText(controlsText, 0, 78, 5, "#94a3b8");
+  screen.drawText("Key: " + (game.hasKey ? "found" : "missing"), 0, -78, 5, "#94a3b8");
+
+  for (let i = 0; i < game.platforms.length; i += 1) {
+    const platform = game.platforms[i];
+    screen.fillRect(platform.x, platform.y, platform.w, platform.h, "#334155");
+  }
+
+  screen.fillRect(game.exit.x, game.exit.y, game.exit.w, game.exit.h, game.hasKey ? "#22c55e" : "#64748b");
+  screen.drawText("EXIT", game.exit.x, game.exit.y - 18, 5, "#e2e8f0");
+
+  if (!game.key.collected) {
+    screen.fillRound(game.key.x, game.key.y, game.key.w, game.key.h, "#fbbf24");
+  }
+
+  screen.fillRound(game.player.x, game.player.y, game.player.w, game.player.h, "#38bdf8");
+  screen.drawRound(game.player.x, game.player.y, game.player.w + 1, game.player.h + 1, "#0ea5e9");
+
+  if (game.gameOver) {
+    screen.drawText(game.win ? "Puzzle solved" : "Game Over", 0, -6, 10, "#86efac");
+  }
+}
+`;
+}
+
+function buildMicroStudioJavaScriptPuzzlePlatformerFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
+  const description = JSON.stringify((plan.project && plan.project.description) || "");
+  const controlsText = JSON.stringify("Arrow keys to move | Space to jump | R to restart");
+  return `// ${title}
+// ${description}
+// Safe microStudio JavaScript puzzle-platformer starter.
+
+const game = {
+  player: {
+    x: -72,
+    y: 58,
+    vx: 0,
+    vy: 0,
+    w: 12,
+    h: 16,
+    grounded: false
+  },
+  platforms: [
+    { x: 0, y: 84, w: 220, h: 18 },
+    { x: -64, y: 44, w: 72, h: 10 },
+    { x: 20, y: 12, w: 74, h: 10 },
+    { x: -84, y: -24, w: 50, h: 10 },
+    { x: 10, y: -56, w: 66, h: 10 }
+  ],
+  key: { x: -54, y: 28, w: 8, h: 8, collected: false },
+  exit: { x: 92, y: -72, w: 14, h: 32 },
+  hasKey: false,
+  gameOver: false,
+  win: false,
+  message: "Collect the key and reach the exit."
+};
+
+const titleText = ${title};
+const controlsText = ${controlsText};
+
+function resetGame() {
+  game.player.x = -72;
+  game.player.y = 58;
+  game.player.vx = 0;
+  game.player.vy = 0;
+  game.player.grounded = false;
+  game.key.collected = false;
+  game.hasKey = false;
+  game.gameOver = false;
+  game.win = false;
+  game.message = "Collect the key and reach the exit.";
+}
+
+function rectsOverlap(ax, ay, aw, ah, bx, byPos, bw, bh) {
+  return Math.abs(ax - bx) < (aw + bw) * 0.5 && Math.abs(ay - byPos) < (ah + bh) * 0.5;
+}
+
+function updatePlayer() {
+  const previousY = game.player.y;
+
+  if (keyboard.LEFT) {
+    game.player.vx -= 0.45;
+  }
+  if (keyboard.RIGHT) {
+    game.player.vx += 0.45;
+  }
+  if ((keyboard.press.SPACE || keyboard.press.UP || keyboard.press.KEY_Z) && game.player.grounded) {
+    game.player.vy = -8.5;
+    game.player.grounded = false;
+  }
+
+  game.player.vx *= 0.88;
+  game.player.vy += 0.42;
+  if (game.player.vy > 9) {
+    game.player.vy = 9;
+  }
+
+  game.player.x += game.player.vx;
+  game.player.y += game.player.vy;
+  game.player.grounded = false;
+
+  if (game.player.x < -104) {
+    game.player.x = -104;
+    game.player.vx = 0;
+  }
+  if (game.player.x > 104) {
+    game.player.x = 104;
+    game.player.vx = 0;
+  }
+  if (game.player.y > 104) {
+    game.player.y = 104;
+    game.player.vy = 0;
+    game.player.grounded = true;
+  }
+
+  for (let i = 0; i < game.platforms.length; i += 1) {
+    const platform = game.platforms[i];
+    if (!rectsOverlap(game.player.x, game.player.y, game.player.w, game.player.h, platform.x, platform.y, platform.w, platform.h)) {
+      continue;
+    }
+    const platformTop = platform.y - platform.h * 0.5;
+    const playerBottomBeforeMove = previousY + game.player.h * 0.5;
+    if (game.player.vy >= 0 && playerBottomBeforeMove <= platformTop + 6) {
+      game.player.y = platformTop - game.player.h * 0.5;
+      game.player.vy = 0;
+      game.player.grounded = true;
+    }
+  }
+}
+
+function updatePuzzleState() {
+  if (!game.key.collected && rectsOverlap(game.player.x, game.player.y, game.player.w, game.player.h, game.key.x, game.key.y, game.key.w, game.key.h)) {
+    game.key.collected = true;
+    game.hasKey = true;
+    game.message = "Key found. Reach the exit.";
+  }
+  if (!game.hasKey && rectsOverlap(game.player.x, game.player.y, game.player.w, game.player.h, game.exit.x, game.exit.y, game.exit.w, game.exit.h)) {
+    game.message = "Find the key first.";
+  }
+  if (game.hasKey && rectsOverlap(game.player.x, game.player.y, game.player.w, game.player.h, game.exit.x, game.exit.y, game.exit.w, game.exit.h)) {
+    game.win = true;
+    game.gameOver = true;
+    game.message = "Exit reached. Press R to restart.";
+  }
+}
+
+function init() {
+  resetGame();
+}
+
+function update() {
+  if (keyboard.press.KEY_R || keyboard.press.SPACE) {
+    resetGame();
+    return;
+  }
+  if (game.gameOver) {
+    return;
+  }
+
+  updatePlayer();
+  updatePuzzleState();
+}
+
+function draw() {
+  screen.fillRect(0, 0, screen.width, screen.height, "#07111f");
+  screen.drawText(titleText, 0, -92, 8, "#dbeafe");
+  screen.drawText(game.message, 0, 92, 5, "#cbd5e1");
+  screen.drawText(controlsText, 0, 78, 5, "#94a3b8");
+  screen.drawText("Key: " + (game.hasKey ? "found" : "missing"), 0, -78, 5, "#94a3b8");
+
+  for (let i = 0; i < game.platforms.length; i += 1) {
+    const platform = game.platforms[i];
+    screen.fillRect(platform.x, platform.y, platform.w, platform.h, "#334155");
+  }
+
+  screen.fillRect(game.exit.x, game.exit.y, game.exit.w, game.exit.h, game.hasKey ? "#22c55e" : "#64748b");
+  screen.drawText("EXIT", game.exit.x, game.exit.y - 18, 5, "#e2e8f0");
+
+  if (!game.key.collected) {
+    screen.fillRound(game.key.x, game.key.y, game.key.w, game.key.h, "#fbbf24");
+  }
+
+  screen.fillRound(game.player.x, game.player.y, game.player.w, game.player.h, "#38bdf8");
+  screen.drawRound(game.player.x, game.player.y, game.player.w + 1, game.player.h + 1, "#0ea5e9");
+
+  if (game.gameOver) {
+    screen.drawText(game.win ? "Puzzle solved" : "Game Over", 0, -6, 10, "#86efac");
   }
 }
 `;
@@ -2205,6 +2552,195 @@ end
 `;
 }
 
+function buildMicroScriptPuzzlePlatformerFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
+  const description = JSON.stringify((plan.project && plan.project.description) || "");
+  const controlsText = JSON.stringify("Arrow keys to move | Space to jump | R to restart");
+  return `// ${title}
+// ${description}
+// Safe microStudio microScript puzzle-platformer starter.
+
+game = object
+  player = object
+    x = -72
+    y = 58
+    vx = 0
+    vy = 0
+    w = 12
+    h = 16
+    grounded = false
+  end
+  platforms = []
+  key = object
+    x = -54
+    y = 28
+    w = 8
+    h = 8
+    collected = false
+  end
+  exit = object
+    x = 92
+    y = -72
+    w = 14
+    h = 32
+  end
+  hasKey = false
+  gameOver = false
+  win = false
+  message = "Collect the key and reach the exit."
+end
+
+titleText = ${title}
+controlsText = ${controlsText}
+
+resetGame = function()
+  game.player.x = -72
+  game.player.y = 58
+  game.player.vx = 0
+  game.player.vy = 0
+  game.player.grounded = false
+  game.key.collected = false
+  game.hasKey = false
+  game.gameOver = false
+  game.win = false
+  game.message = "Collect the key and reach the exit."
+
+  game.platforms = []
+  game.platforms.push(object x = 0 y = 84 w = 220 h = 18 end)
+  game.platforms.push(object x = -64 y = 44 w = 72 h = 10 end)
+  game.platforms.push(object x = 20 y = 12 w = 74 h = 10 end)
+  game.platforms.push(object x = -84 y = -24 w = 50 h = 10 end)
+  game.platforms.push(object x = 10 y = -56 w = 66 h = 10 end)
+end
+
+rectsOverlap = function(ax, ay, aw, ah, bx, byPos, bw, bh)
+  return abs(ax - bx) < (aw + bw) * 0.5 and abs(ay - byPos) < (ah + bh) * 0.5
+end
+
+updatePlayer = function()
+  previousY = game.player.y
+
+  if keyboard.LEFT then
+    game.player.vx -= 0.45
+  end
+  if keyboard.RIGHT then
+    game.player.vx += 0.45
+  end
+  if (keyboard.press.SPACE or keyboard.press.UP or keyboard.press.KEY_Z) and game.player.grounded then
+    game.player.vy = -8.5
+    game.player.grounded = false
+  end
+
+  game.player.vx *= 0.88
+  game.player.vy += 0.42
+  if game.player.vy > 9 then
+    game.player.vy = 9
+  end
+
+  game.player.x += game.player.vx
+  game.player.y += game.player.vy
+  game.player.grounded = false
+
+  if game.player.x < -104 then
+    game.player.x = -104
+    game.player.vx = 0
+  end
+  if game.player.x > 104 then
+    game.player.x = 104
+    game.player.vx = 0
+  end
+  if game.player.y > 104 then
+    game.player.y = 104
+    game.player.vy = 0
+    game.player.grounded = true
+  end
+
+  for i = 0 to game.platforms.length - 1
+    platform = game.platforms[i]
+    if not rectsOverlap(game.player.x, game.player.y, game.player.w, game.player.h, platform.x, platform.y, platform.w, platform.h) then
+      continue
+    end
+    platformTop = platform.y - platform.h * 0.5
+    playerBottomBeforeMove = previousY + game.player.h * 0.5
+    if game.player.vy >= 0 and playerBottomBeforeMove <= platformTop + 6 then
+      game.player.y = platformTop - game.player.h * 0.5
+      game.player.vy = 0
+      game.player.grounded = true
+    end
+  end
+end
+
+updatePuzzleState = function()
+  if not game.key.collected and rectsOverlap(game.player.x, game.player.y, game.player.w, game.player.h, game.key.x, game.key.y, game.key.w, game.key.h) then
+    game.key.collected = true
+    game.hasKey = true
+    game.message = "Key found. Reach the exit."
+  end
+  if not game.hasKey and rectsOverlap(game.player.x, game.player.y, game.player.w, game.player.h, game.exit.x, game.exit.y, game.exit.w, game.exit.h) then
+    game.message = "Find the key first."
+  end
+  if game.hasKey and rectsOverlap(game.player.x, game.player.y, game.player.w, game.player.h, game.exit.x, game.exit.y, game.exit.w, game.exit.h) then
+    game.win = true
+    game.gameOver = true
+    game.message = "Exit reached. Press R to restart."
+  end
+end
+
+init = function()
+  resetGame()
+end
+
+update = function()
+  if keyboard.press.KEY_R or keyboard.press.SPACE then
+    resetGame()
+    return
+  end
+  if game.gameOver then
+    return
+  end
+
+  updatePlayer()
+  updatePuzzleState()
+end
+
+draw = function()
+  screen.fillRect(0, 0, screen.width, screen.height, "#07111f")
+  screen.drawText(titleText, 0, -92, 8, "#dbeafe")
+  screen.drawText(game.message, 0, 92, 5, "#cbd5e1")
+  screen.drawText(controlsText, 0, 78, 5, "#94a3b8")
+  screen.drawText("Key: " + (game.hasKey and "found" or "missing"), 0, -78, 5, "#94a3b8")
+
+  for i = 0 to game.platforms.length - 1
+    platform = game.platforms[i]
+    screen.fillRect(platform.x, platform.y, platform.w, platform.h, "#334155")
+  end
+
+  if game.hasKey then
+    exitColor = "#22c55e"
+  else
+    exitColor = "#64748b"
+  end
+  screen.fillRect(game.exit.x, game.exit.y, game.exit.w, game.exit.h, exitColor)
+  screen.drawText("EXIT", game.exit.x, game.exit.y - 18, 5, "#e2e8f0")
+
+  if not game.key.collected then
+    screen.fillRound(game.key.x, game.key.y, game.key.w, game.key.h, "#fbbf24")
+  end
+
+  screen.fillRound(game.player.x, game.player.y, game.player.w, game.player.h, "#38bdf8")
+  screen.drawRound(game.player.x, game.player.y, game.player.w + 1, game.player.h + 1, "#0ea5e9")
+
+  if game.gameOver then
+    if game.win then
+      screen.drawText("Puzzle solved", 0, -6, 10, "#86efac")
+    else
+      screen.drawText("Game Over", 0, -6, 10, "#86efac")
+    end
+  end
+end
+`;
+}
+
 function buildMicroScriptPlatformerFallbackGameCode(plan, request) {
   const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
   const description = JSON.stringify((plan.project && plan.project.description) || "");
@@ -2629,6 +3165,9 @@ function buildFallbackGameCode(plan, resolvedPhysics, language = "microScript", 
     if (isPuzzleRequest(request)) {
       return buildMicroStudioJavaScriptPuzzleFallbackGameCode(plan, request);
     }
+    if (isPuzzlePlatformerRequest(request)) {
+      return buildMicroStudioJavaScriptPuzzlePlatformerFallbackGameCode(plan, request);
+    }
     if (isRacingRequest(request)) {
       return buildMicroStudioJavaScriptRacingFallbackGameCode(plan, request);
     }
@@ -2645,6 +3184,9 @@ function buildFallbackGameCode(plan, resolvedPhysics, language = "microScript", 
   }
   if (isPuzzleRequest(request)) {
     return buildMicroScriptPuzzleFallbackGameCode(plan, request);
+  }
+  if (isPuzzlePlatformerRequest(request)) {
+    return buildMicroScriptPuzzlePlatformerFallbackGameCode(plan, request);
   }
   if (isRacingRequest(request)) {
     return buildMicroScriptRacingFallbackGameCode(plan, request);
@@ -3054,6 +3596,9 @@ function buildMicroStudioGenrePromptRules(request) {
   if (isPuzzleRequest(request)) {
     rules.push("For a puzzle, use a compact board state, limited legal moves, clear win conditions, and mouse or touch interactions that fit tile swapping, matching, ordering, or path completion.");
   }
+  if (isPuzzlePlatformerRequest(request)) {
+    rules.push("For a puzzle-platformer, combine platform movement with a small gate condition such as a key, switch, or collected item before the exit becomes valid.");
+  }
   if (isPlatformerRequest(request)) {
     rules.push("For a platformer, use gravity, a jump arc, simple collision against platforms, a bounded camera or fixed room, a goal, and a small number of collectibles or hazards.");
   }
@@ -3089,6 +3634,7 @@ function buildMicroScriptSystemPrompt(request, resolvedPhysics) {
     buildMicroStudioInputPromptRules(),
     buildMicroStudioGenrePromptRules(request),
     "If the prompt suggests a puzzle, prefer a small board, explicit state transitions, and a clear success condition such as tile ordering, matching, or path completion.",
+    "If the prompt suggests a puzzle-platformer, use platforming movement with one compact gate condition such as a key, switch, or collectible that unlocks the exit.",
     resolvedPhysics ? "Matter.js is enabled; create and clear the engine safely and keep body counts bounded." : "Do not use Matter.js unless the game concept explicitly needs rigid-body physics.",
     `Use ${mainPathForLanguage("microScript")} in the JSON schema, and keep the generated code free of browser/network/DOM APIs.`,
     buildMicroScriptSyntaxPromptRules(),
@@ -3111,6 +3657,7 @@ function buildMicroStudioJavaScriptSystemPrompt(request, resolvedPhysics) {
     buildMicroStudioInputPromptRules(),
     buildMicroStudioGenrePromptRules(request),
     "If the prompt suggests a puzzle, prefer a small board, explicit state transitions, and a clear success condition such as tile ordering, matching, or path completion.",
+    "If the prompt suggests a puzzle-platformer, use platforming movement with one compact gate condition such as a key, switch, or collectible that unlocks the exit.",
     resolvedPhysics ? "Matter.js is enabled; create and clear the engine safely and keep body counts bounded." : "Do not use Matter.js unless the game concept explicitly needs rigid-body physics.",
     `Use ${mainPathForLanguage("microStudioJavaScript")} in the JSON schema, and keep the generated code free of browser/network/DOM APIs.`,
     buildMicroStudioJavaScriptSyntaxPromptRules(),
@@ -4241,6 +4788,8 @@ class AiGameGeneratorService {
           ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio tic-tac-toe fallback was inserted."
           : fallbackGenre === "puzzle"
             ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio puzzle fallback was inserted."
+            : fallbackGenre === "puzzlePlatformer"
+              ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio puzzle-platformer fallback was inserted."
             : fallbackGenre === "racing"
               ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio racing fallback was inserted."
               : fallbackGenre === "topDownAdventure"
@@ -5028,11 +5577,13 @@ module.exports = {
   validateMicroStudioRuntimeApiUsage,
   buildMicroStudioJavaScriptTicTacToeFallbackGameCode,
   buildMicroStudioJavaScriptPuzzleFallbackGameCode,
+  buildMicroStudioJavaScriptPuzzlePlatformerFallbackGameCode,
   buildMicroStudioJavaScriptRacingFallbackGameCode,
   buildMicroStudioJavaScriptTopDownAdventureFallbackGameCode,
   buildMicroStudioJavaScriptPlatformerFallbackGameCode,
   buildMicroStudioJavaScriptShooterFallbackGameCode,
   buildMicroScriptPuzzleFallbackGameCode,
+  buildMicroScriptPuzzlePlatformerFallbackGameCode,
   buildMicroScriptRacingFallbackGameCode,
   buildMicroScriptTopDownAdventureFallbackGameCode,
   buildMicroScriptPlatformerFallbackGameCode,

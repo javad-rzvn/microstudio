@@ -10,11 +10,13 @@ const {
   validateMicroScriptCode,
   buildMicroStudioJavaScriptTicTacToeFallbackGameCode,
   buildMicroStudioJavaScriptPuzzleFallbackGameCode,
+  buildMicroStudioJavaScriptPuzzlePlatformerFallbackGameCode,
   buildMicroStudioJavaScriptRacingFallbackGameCode,
   buildMicroStudioJavaScriptTopDownAdventureFallbackGameCode,
   buildMicroStudioJavaScriptPlatformerFallbackGameCode,
   buildMicroStudioJavaScriptShooterFallbackGameCode,
   buildMicroScriptPuzzleFallbackGameCode,
+  buildMicroScriptPuzzlePlatformerFallbackGameCode,
   buildMicroScriptRacingFallbackGameCode,
   buildMicroScriptTopDownAdventureFallbackGameCode,
   buildMicroScriptPlatformerFallbackGameCode,
@@ -114,6 +116,26 @@ test("builds a valid puzzle microStudio JavaScript fallback", () => {
   assert.ok(code.includes("screen.drawLine"));
 });
 
+test("builds a valid puzzle-platformer microStudio JavaScript fallback", () => {
+  const code = buildMicroStudioJavaScriptPuzzlePlatformerFallbackGameCode(
+    {
+      project: {
+        title: "Key Climb",
+        description: "A small puzzle-platformer."
+      }
+    },
+    {
+      idea: "build a puzzle-platformer with a key and exit"
+    }
+  );
+
+  const validation = validateMicroStudioJavaScriptCode(code);
+  assert.equal(validation.ok, true, validation.errors.join("\n"));
+  assert.ok(code.includes("hasKey"));
+  assert.ok(code.includes("function update()"));
+  assert.ok(code.includes("screen.fillRect"));
+});
+
 test("builds a valid racing microStudio JavaScript fallback", () => {
   const code = buildMicroStudioJavaScriptRacingFallbackGameCode(
     {
@@ -207,6 +229,18 @@ test("builds valid microScript genre fallbacks", () => {
     }
   );
 
+  const puzzlePlatformerCode = buildMicroScriptPuzzlePlatformerFallbackGameCode(
+    {
+      project: {
+        title: "Key Climb",
+        description: "A small puzzle-platformer."
+      }
+    },
+    {
+      idea: "build a puzzle-platformer with a key and exit"
+    }
+  );
+
   const racingCode = buildMicroScriptRacingFallbackGameCode(
     {
       project: {
@@ -256,18 +290,22 @@ test("builds valid microScript genre fallbacks", () => {
   );
 
   const puzzleValidation = validateMicroScriptCode(puzzleCode);
+  const puzzlePlatformerValidation = validateMicroScriptCode(puzzlePlatformerCode);
   const racingValidation = validateMicroScriptCode(racingCode);
   const topDownAdventureValidation = validateMicroScriptCode(topDownAdventureCode);
   const platformerValidation = validateMicroScriptCode(platformerCode);
   const shooterValidation = validateMicroScriptCode(shooterCode);
 
   assert.equal(puzzleValidation.ok, true, puzzleValidation.errors.join("\n"));
+  assert.equal(puzzlePlatformerValidation.ok, true, puzzlePlatformerValidation.errors.join("\n"));
   assert.equal(racingValidation.ok, true, racingValidation.errors.join("\n"));
   assert.equal(topDownAdventureValidation.ok, true, topDownAdventureValidation.errors.join("\n"));
   assert.equal(platformerValidation.ok, true, platformerValidation.errors.join("\n"));
   assert.equal(shooterValidation.ok, true, shooterValidation.errors.join("\n"));
   assert.ok(puzzleCode.includes("blankIndex"));
   assert.ok(puzzleCode.includes("screen.drawLine"));
+  assert.ok(puzzlePlatformerCode.includes("hasKey"));
+  assert.ok(puzzlePlatformerCode.includes("screen.fillRect"));
   assert.ok(racingCode.includes("nextGate"));
   assert.ok(racingCode.includes("screen.drawRect"));
   assert.ok(topDownAdventureCode.includes("hasKey"));
