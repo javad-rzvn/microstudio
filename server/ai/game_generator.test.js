@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 const {
   normalizeGameLanguage,
+  summarizeGameIdea,
   mainPathForLanguage,
   normalizeSourcePathForLanguage,
   validateMicroStudioJavaScriptCode,
@@ -27,6 +28,14 @@ test("normalizes language aliases to internal names", () => {
   assert.equal(normalizeGameLanguage("ms"), "microScript");
   assert.equal(normalizeGameLanguage("javascript"), "microStudioJavaScript");
   assert.equal(normalizeGameLanguage("microstudio-javascript"), "microStudioJavaScript");
+});
+
+test("summarizes ideas by stripping generic game boilerplate", () => {
+  const idea = "create a 2d game which helps getting to know the the application of magnifier, which user hover it over a paper and it shows text larger";
+  assert.equal(
+    summarizeGameIdea(idea),
+    "helps getting to know the application of magnifier, which user hover it over a paper and it shows text larger"
+  );
 });
 
 test("selects the correct main source path for each language", () => {

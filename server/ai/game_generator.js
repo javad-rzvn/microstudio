@@ -521,6 +521,52 @@ function normalizeGameLanguage(value) {
   return "microScript";
 }
 
+function normalizeIdeaText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function stripGenericGameBoilerplate(idea) {
+  let text = normalizeIdeaText(idea);
+  if (!text) {
+    return "";
+  }
+
+  const prefixes = [
+    /^(?:please\s+)?(?:create|make|build|generate|design|develop)\s+(?:a|an|the)?\s*(?:simple|basic|small|fun|cool|good|interesting)?\s*(?:2d|2-d|2d\s+)?(?:game|video game|starter|demo|prototype)\b[\s,:-]*/i,
+    /^(?:create|make|build|generate)\s+(?:a|an|the)?\s*(?:simple|basic)?\s*(?:2d|2-d|2d\s+)?game\b[\s,:-]*/i,
+    /^(?:game\s+idea|idea|prompt)\s*[\s,:-]*/i
+  ];
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const prefix of prefixes) {
+      const next = text.replace(prefix, "");
+      if (next !== text) {
+        text = next.trim();
+        changed = true;
+      }
+    }
+  }
+
+  return text;
+}
+
+function summarizeGameIdea(idea) {
+  const raw = normalizeIdeaText(idea);
+  if (!raw) {
+    return "";
+  }
+  let stripped = stripGenericGameBoilerplate(raw);
+  if (!stripped) {
+    return raw;
+  }
+  stripped = stripped.replace(/^(?:which|that|where|to|for|about)\s+/i, "");
+  stripped = stripped.replace(/\bthe\s+the\b/gi, "the");
+  stripped = stripped.replace(/\s{2,}/g, " ").trim();
+  return stripped;
+}
+
 function gameLanguageConfig(language) {
   const normalized = normalizeGameLanguage(language);
   if (normalized === "microStudioJavaScript") {
@@ -758,7 +804,7 @@ function buildGeneratedAssetManifestFile(normalized, request) {
 
 
 function fallbackRequestText(request) {
-  return `${request && request.idea ? request.idea : ""} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
+  return `${summarizeGameIdea(request && request.idea ? request.idea : "")} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
 }
 
 function isArcadeCollectorRequest(request) {
@@ -3500,7 +3546,7 @@ end
 
 
 function compactIdeaText(request, fallback = "this game") {
-  const text = String(request && request.idea ? request.idea : fallback).replace(/\s+/g, " ").trim();
+  const text = summarizeGameIdea(request && request.idea ? request.idea : fallback);
   return text.slice(0, 180) || fallback;
 }
 
@@ -4274,6 +4320,7 @@ function buildMicroStudioGenrePromptRules(request) {
 }
 
 function buildMicroScriptSystemPrompt(request, resolvedPhysics) {
+  const ideaSummary = summarizeGameIdea(request.idea);
   return [
     "You are an expert microStudio microScript game developer.",
     buildMicroStudioDocGrounding(),
@@ -4286,6 +4333,9 @@ function buildMicroScriptSystemPrompt(request, resolvedPhysics) {
     "Prefer microStudio drawing/input APIs such as screen.fillRect, screen.drawRect, screen.fillRound, screen.drawRound, screen.drawLine, screen.drawText, screen.drawSprite, screen.drawMap, keyboard.press.KEY_R, mouse.pressed, mouse.press, mouse.x, mouse.y, touch.press, touch.touching, and gamepad when appropriate.",
     buildMicroStudioInputPromptRules(),
     buildMicroStudioGenrePromptRules(request),
+    "Important: the user's idea may begin with boilerplate like 'create a 2d game'. Ignore that boilerplate and preserve the actual mechanic, subject, or learning goal that follows it.",
+    `Raw idea: ${request.idea}`,
+    `Normalized intent: ${ideaSummary}`,
     "If the prompt suggests a puzzle, prefer a small board, explicit state transitions, and a clear success condition such as tile ordering, matching, or path completion.",
     "If the prompt suggests a puzzle-platformer, use platforming movement with one compact gate condition such as a key, switch, or collectible that unlocks the exit.",
     resolvedPhysics ? "Matter.js is enabled; create and clear the engine safely and keep body counts bounded." : "Do not use Matter.js unless the game concept explicitly needs rigid-body physics.",
@@ -4296,6 +4346,7 @@ function buildMicroScriptSystemPrompt(request, resolvedPhysics) {
 }
 
 function buildMicroStudioJavaScriptSystemPrompt(request, resolvedPhysics) {
+  const ideaSummary = summarizeGameIdea(request.idea);
   return [
     "You are an expert microStudio JavaScript game developer.",
     buildMicroStudioDocGrounding(),
@@ -4309,6 +4360,9 @@ function buildMicroStudioJavaScriptSystemPrompt(request, resolvedPhysics) {
     "Do not use browser or canvas APIs such as line(), circle(), rect(), fillText(), strokeText(), strokeStyle, fillStyle, document, window, addEventListener, onMouseDown, onMouseUp, or onClick.",
     buildMicroStudioInputPromptRules(),
     buildMicroStudioGenrePromptRules(request),
+    "Important: the user's idea may begin with boilerplate like 'create a 2d game'. Ignore that boilerplate and preserve the actual mechanic, subject, or learning goal that follows it.",
+    `Raw idea: ${request.idea}`,
+    `Normalized intent: ${ideaSummary}`,
     "If the prompt suggests a puzzle, prefer a small board, explicit state transitions, and a clear success condition such as tile ordering, matching, or path completion.",
     "If the prompt suggests a puzzle-platformer, use platforming movement with one compact gate condition such as a key, switch, or collectible that unlocks the exit.",
     resolvedPhysics ? "Matter.js is enabled; create and clear the engine safely and keep body counts bounded." : "Do not use Matter.js unless the game concept explicitly needs rigid-body physics.",
@@ -4319,11 +4373,13 @@ function buildMicroStudioJavaScriptSystemPrompt(request, resolvedPhysics) {
 }
 
 function buildMicroScriptUserPrompt(request, resolvedPhysics) {
+  const ideaSummary = summarizeGameIdea(request.idea);
   return [
     "Generate a microStudio microScript game project.",
     buildMicroStudioDocGrounding(),
     buildMicroStudioCorePromptRules(),
     `Idea: ${request.idea}`,
+    `Normalized intent: ${ideaSummary}`,
     "Language: microScript",
     `Physics: ${request.physics}`,
     `Resolved physics: ${resolvedPhysics ? "matterjs" : "manual"}`,
@@ -4337,11 +4393,13 @@ function buildMicroScriptUserPrompt(request, resolvedPhysics) {
 }
 
 function buildMicroStudioJavaScriptUserPrompt(request, resolvedPhysics) {
+  const ideaSummary = summarizeGameIdea(request.idea);
   return [
     "Generate a microStudio JavaScript game project.",
     buildMicroStudioDocGrounding(),
     buildMicroStudioCorePromptRules(),
     `Idea: ${request.idea}`,
+    `Normalized intent: ${ideaSummary}`,
     "Language: microStudioJavaScript",
     `Physics: ${request.physics}`,
     `Resolved physics: ${resolvedPhysics ? "matterjs" : "manual"}`,
@@ -6248,6 +6306,9 @@ module.exports = {
   AiGameGeneratorService,
   shouldUseMatter,
   normalizeGameLanguage,
+  normalizeIdeaText,
+  stripGenericGameBoilerplate,
+  summarizeGameIdea,
   normalizeAspectRatio,
   mainPathForLanguage,
   normalizeSourcePathForLanguage,
