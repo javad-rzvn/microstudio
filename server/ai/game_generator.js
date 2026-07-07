@@ -6099,8 +6099,17 @@ class AiGameGeneratorService {
       }, resolvedPhysics, config.language, request);
     }
     if (isUnsafeCode(code)) {
-      warnings.push(`Unsafe code patterns were detected in ${sourcePath || config.modelSourcePath}`);
-      throw new Error(`Unsafe code patterns were detected in ${sourcePath || config.modelSourcePath}`);
+      const message = `Unsafe code patterns were detected in ${sourcePath || config.modelSourcePath}`;
+      if (strictMode) {
+        warnings.push(message);
+        throw new Error(message);
+      }
+      warnings.push(`${message}; safe fallback starter inserted.`);
+      return buildFallbackGameCode({
+        project: { title: this.fallbackTitle(request.idea), description: request.idea },
+        gameDesign: this.validateGameDesign({}, request),
+        nextSteps: []
+      }, resolvedPhysics, config.language, request);
     }
     const validation = validateGeneratedCodeForLanguage(code, config.language);
     if (!validation.ok) {
