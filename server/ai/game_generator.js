@@ -761,13 +761,868 @@ function isTicTacToeRequest(request) {
   return /tic[-\s]?tac[-\s]?toe|noughts and crosses|three in a row|3x3|grid/.test(text);
 }
 
+function isPlatformerRequest(request) {
+  const text = `${request && request.idea ? request.idea : ""} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
+  return /platformer|platform game|side[-\s]?scroller|side[-\s]?scroll|run[-\s]?and[-\s]?jump|jump[-\s]?game|metroidvania|runner/.test(text);
+}
+
+function isShooterRequest(request) {
+  const text = `${request && request.idea ? request.idea : ""} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
+  return /shooter|shoot[-\s]?em[-\s]?up|shmup|bullet[-\s]?hell|space[-\s]?shooter|top[-\s]?down[-\s]?shooter|arena[-\s]?shooter|arcade[-\s]?shooter|blaster/.test(text);
+}
+
+function fallbackGenreName(request) {
+  if (isTicTacToeRequest(request)) {
+    return "ticTacToe";
+  }
+  if (isPlatformerRequest(request)) {
+    return "platformer";
+  }
+  if (isShooterRequest(request)) {
+    return "shooter";
+  }
+  return null;
+}
+
+function buildMicroStudioJavaScriptPlatformerFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
+  const description = JSON.stringify((plan.project && plan.project.description) || "");
+  const controlsText = JSON.stringify("Arrow keys to move | Space to jump | R to restart");
+  return `// ${title}
+// ${description}
+// Safe microStudio JavaScript platformer starter.
+
+const game = {
+  player: {
+    x: -72,
+    y: 58,
+    vx: 0,
+    vy: 0,
+    w: 12,
+    h: 16,
+    grounded: false
+  },
+  platforms: [
+    { x: 0, y: 84, w: 220, h: 18 },
+    { x: -60, y: 44, w: 76, h: 10 },
+    { x: 18, y: 8, w: 72, h: 10 },
+    { x: -84, y: -26, w: 54, h: 10 },
+    { x: 8, y: -54, w: 62, h: 10 }
+  ],
+  coins: [
+    { x: -58, y: 26, collected: false },
+    { x: -6, y: -4, collected: false },
+    { x: 40, y: -28, collected: false },
+    { x: 76, y: -66, collected: false }
+  ],
+  goal: { x: 92, y: -72, w: 14, h: 32 },
+  score: 0,
+  gameOver: false,
+  win: false,
+  message: "Collect the coins and reach the goal."
+};
+
+const titleText = ${title};
+const controlsText = ${controlsText};
+
+function resetGame() {
+  game.player.x = -72;
+  game.player.y = 58;
+  game.player.vx = 0;
+  game.player.vy = 0;
+  game.player.grounded = false;
+  for (let i = 0; i < game.coins.length; i += 1) {
+    game.coins[i].collected = false;
+  }
+  game.score = 0;
+  game.gameOver = false;
+  game.win = false;
+  game.message = "Collect the coins and reach the goal.";
+}
+
+function rectsOverlap(ax, ay, aw, ah, bx, byPos, bw, bh) {
+  return Math.abs(ax - bx) < (aw + bw) * 0.5 && Math.abs(ay - byPos) < (ah + bh) * 0.5;
+}
+
+function updatePlayer() {
+  const previousY = game.player.y;
+
+  if (keyboard.LEFT) {
+    game.player.vx -= 0.45;
+  }
+  if (keyboard.RIGHT) {
+    game.player.vx += 0.45;
+  }
+  if ((keyboard.press.SPACE || keyboard.press.UP || keyboard.press.KEY_Z) && game.player.grounded) {
+    game.player.vy = -8.5;
+    game.player.grounded = false;
+  }
+
+  game.player.vx *= 0.88;
+  game.player.vy += 0.42;
+  if (game.player.vy > 9) {
+    game.player.vy = 9;
+  }
+
+  game.player.x += game.player.vx;
+  game.player.y += game.player.vy;
+  game.player.grounded = false;
+
+  if (game.player.x < -104) {
+    game.player.x = -104;
+    game.player.vx = 0;
+  }
+  if (game.player.x > 104) {
+    game.player.x = 104;
+    game.player.vx = 0;
+  }
+  if (game.player.y > 104) {
+    game.player.y = 104;
+    game.player.vy = 0;
+    game.player.grounded = true;
+  }
+
+  for (let i = 0; i < game.platforms.length; i += 1) {
+    const platform = game.platforms[i];
+    if (!rectsOverlap(game.player.x, game.player.y, game.player.w, game.player.h, platform.x, platform.y, platform.w, platform.h)) {
+      continue;
+    }
+    const platformTop = platform.y - platform.h * 0.5;
+    const playerBottomBeforeMove = previousY + game.player.h * 0.5;
+    if (game.player.vy >= 0 && playerBottomBeforeMove <= platformTop + 6) {
+      game.player.y = platformTop - game.player.h * 0.5;
+      game.player.vy = 0;
+      game.player.grounded = true;
+    }
+  }
+}
+
+function collectCoins() {
+  for (let i = 0; i < game.coins.length; i += 1) {
+    const coin = game.coins[i];
+    if (coin.collected) {
+      continue;
+    }
+    if (rectsOverlap(game.player.x, game.player.y, game.player.w, game.player.h, coin.x, coin.y, 10, 10)) {
+      coin.collected = true;
+      game.score += 1;
+    }
+  }
+}
+
+function updateGoalState() {
+  const allCoinsCollected = game.score >= game.coins.length;
+  if (allCoinsCollected && rectsOverlap(game.player.x, game.player.y, game.player.w, game.player.h, game.goal.x, game.goal.y, game.goal.w, game.goal.h)) {
+    game.win = true;
+    game.gameOver = true;
+    game.message = "Goal reached. Press Space or R to restart.";
+  } else if (allCoinsCollected) {
+    game.message = "All coins collected. Reach the goal on the right.";
+  }
+}
+
+function init() {
+  resetGame();
+}
+
+function update() {
+  if (keyboard.press.SPACE || keyboard.press.KEY_R) {
+    resetGame();
+    return;
+  }
+  if (game.gameOver) {
+    return;
+  }
+
+  updatePlayer();
+  collectCoins();
+  updateGoalState();
+}
+
+function draw() {
+  screen.fillRect(0, 0, screen.width, screen.height, "#08111f");
+  screen.drawText(titleText, 0, -92, 8, "#dbeafe");
+  screen.drawText(game.message, 0, 92, 5, "#cbd5e1");
+  screen.drawText("Coins: " + game.score + " / " + game.coins.length, 0, -78, 5, "#94a3b8");
+  screen.drawText(controlsText, 0, 78, 5, "#94a3b8");
+
+  for (let i = 0; i < game.platforms.length; i += 1) {
+    const platform = game.platforms[i];
+    screen.fillRect(platform.x, platform.y, platform.w, platform.h, "#334155");
+  }
+
+  screen.fillRect(game.goal.x, game.goal.y, game.goal.w, game.goal.h, game.score >= game.coins.length ? "#22c55e" : "#64748b");
+  screen.drawText("GOAL", game.goal.x, game.goal.y - 20, 5, "#e2e8f0");
+
+  for (let i = 0; i < game.coins.length; i += 1) {
+    const coin = game.coins[i];
+    if (!coin.collected) {
+      screen.fillRound(coin.x, coin.y, 10, 10, "#fbbf24");
+    }
+  }
+
+  screen.fillRound(game.player.x, game.player.y, game.player.w, game.player.h, "#38bdf8");
+  screen.drawRound(game.player.x, game.player.y, game.player.w + 1, game.player.h + 1, "#0ea5e9");
+
+  if (game.gameOver) {
+    screen.drawText(game.win ? "You win" : "Game Over", 0, -6, 10, "#fca5a5");
+  }
+}
+`;
+}
+
+function buildMicroStudioJavaScriptShooterFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
+  const description = JSON.stringify((plan.project && plan.project.description) || "");
+  const controlsText = JSON.stringify("Arrow keys to move | Space to fire | R to restart");
+  return `// ${title}
+// ${description}
+// Safe microStudio JavaScript shooter starter.
+
+const game = {
+  player: {
+    x: 0,
+    y: 72,
+    w: 12,
+    h: 12,
+    fireCooldown: 0
+  },
+  bullets: [],
+  enemies: [],
+  score: 0,
+  lives: 3,
+  spawnTimer: 0,
+  gameOver: false,
+  message: "Move, shoot, survive."
+};
+
+const titleText = ${title};
+const controlsText = ${controlsText};
+
+function resetGame() {
+  game.player.x = 0;
+  game.player.y = 72;
+  game.player.fireCooldown = 0;
+  game.bullets = [];
+  game.enemies = [];
+  game.score = 0;
+  game.lives = 3;
+  game.spawnTimer = 0;
+  game.gameOver = false;
+  game.message = "Move, shoot, survive.";
+}
+
+function hit(ax, ay, aw, ah, bx, by, bw, bh) {
+  return Math.abs(ax - bx) < (aw + bw) * 0.5 && Math.abs(ay - by) < (ah + bh) * 0.5;
+}
+
+function spawnEnemy() {
+  if (game.enemies.length >= 18) {
+    return;
+  }
+  const enemy = {
+    x: random.next() * 176 - 88,
+    y: -98,
+    w: 12,
+    h: 12,
+    vx: (random.next() - 0.5) * 1.1,
+    vy: 1.3 + random.next() * 1.5
+  };
+  game.enemies.push(enemy);
+}
+
+function fireBullet() {
+  if (game.bullets.length >= 18) {
+    return;
+  }
+  game.bullets.push({
+    x: game.player.x,
+    y: game.player.y - 12,
+    w: 4,
+    h: 8,
+    vy: -5.5
+  });
+}
+
+function updatePlayer() {
+  if (keyboard.LEFT) {
+    game.player.x -= 2.8;
+  }
+  if (keyboard.RIGHT) {
+    game.player.x += 2.8;
+  }
+  if (keyboard.UP) {
+    game.player.y -= 2.2;
+  }
+  if (keyboard.DOWN) {
+    game.player.y += 2.2;
+  }
+
+  if (game.player.x < -94) {
+    game.player.x = -94;
+  }
+  if (game.player.x > 94) {
+    game.player.x = 94;
+  }
+  if (game.player.y < -78) {
+    game.player.y = -78;
+  }
+  if (game.player.y > 84) {
+    game.player.y = 84;
+  }
+
+  if (game.player.fireCooldown > 0) {
+    game.player.fireCooldown -= 1;
+  }
+  if (keyboard.press.SPACE && game.player.fireCooldown <= 0) {
+    fireBullet();
+    game.player.fireCooldown = 8;
+  }
+}
+
+function updateBullets() {
+  for (let i = game.bullets.length - 1; i >= 0; i -= 1) {
+    const bullet = game.bullets[i];
+    bullet.y += bullet.vy;
+    if (bullet.y < -110) {
+      game.bullets.splice(i, 1);
+    }
+  }
+}
+
+function updateEnemies() {
+  game.spawnTimer -= 1;
+  if (game.spawnTimer <= 0) {
+    game.spawnTimer = 30;
+    spawnEnemy();
+  }
+
+  for (let i = game.enemies.length - 1; i >= 0; i -= 1) {
+    const enemy = game.enemies[i];
+    enemy.x += enemy.vx;
+    enemy.y += enemy.vy;
+
+    if (enemy.x < -104 || enemy.x > 104) {
+      enemy.vx = -enemy.vx;
+    }
+
+    if (hit(game.player.x, game.player.y, game.player.w, game.player.h, enemy.x, enemy.y, enemy.w, enemy.h)) {
+      game.enemies.splice(i, 1);
+      game.lives -= 1;
+      if (game.lives <= 0) {
+        game.gameOver = true;
+      }
+    } else if (enemy.y > 110) {
+      game.enemies.splice(i, 1);
+      game.lives -= 1;
+      if (game.lives <= 0) {
+        game.gameOver = true;
+      }
+    }
+  }
+}
+
+function resolveBulletHits() {
+  for (let i = game.bullets.length - 1; i >= 0; i -= 1) {
+    const bullet = game.bullets[i];
+    let removed = false;
+    for (let j = game.enemies.length - 1; j >= 0; j -= 1) {
+      const enemy = game.enemies[j];
+      if (hit(bullet.x, bullet.y, bullet.w, bullet.h, enemy.x, enemy.y, enemy.w, enemy.h)) {
+        game.enemies.splice(j, 1);
+        game.bullets.splice(i, 1);
+        game.score += 1;
+        removed = true;
+        break;
+      }
+    }
+    if (removed) {
+      continue;
+    }
+  }
+}
+
+function init() {
+  resetGame();
+}
+
+function update() {
+  if (keyboard.press.SPACE || keyboard.press.KEY_R) {
+    resetGame();
+    return;
+  }
+  if (game.gameOver) {
+    return;
+  }
+
+  updatePlayer();
+  updateBullets();
+  updateEnemies();
+  resolveBulletHits();
+}
+
+function draw() {
+  screen.fillRect(0, 0, screen.width, screen.height, "#05111f");
+  screen.drawText(titleText, 0, -92, 8, "#dbeafe");
+  screen.drawText("Score: " + game.score + "  Lives: " + game.lives, 0, -78, 5, "#cbd5e1");
+  screen.drawText(controlsText, 0, 92, 5, "#94a3b8");
+  screen.drawText(game.message, 0, 78, 5, "#94a3b8");
+
+  screen.fillRound(game.player.x, game.player.y, game.player.w, game.player.h, "#38bdf8");
+  screen.drawRound(game.player.x, game.player.y, game.player.w + 1, game.player.h + 1, "#0ea5e9");
+
+  for (let i = 0; i < game.bullets.length; i += 1) {
+    const bullet = game.bullets[i];
+    screen.fillRect(bullet.x, bullet.y, bullet.w, bullet.h, "#fbbf24");
+  }
+
+  for (let i = 0; i < game.enemies.length; i += 1) {
+    const enemy = game.enemies[i];
+    screen.fillRound(enemy.x, enemy.y, enemy.w, enemy.h, "#fb7185");
+  }
+
+  if (game.gameOver) {
+    screen.drawText("Game Over", 0, -6, 10, "#fca5a5");
+    screen.drawText("Press Space or R to restart", 0, 10, 6, "#f8fafc");
+  }
+}
+`;
+}
+
+function buildMicroScriptPlatformerFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
+  const description = JSON.stringify((plan.project && plan.project.description) || "");
+  const controlsText = JSON.stringify("Arrow keys to move | Space to jump | R to restart");
+  return `// ${title}
+// ${description}
+// Safe microStudio microScript platformer starter.
+
+game = object
+  player = object
+    x = -72
+    y = 58
+    vx = 0
+    vy = 0
+    w = 12
+    h = 16
+    grounded = false
+  end
+  platforms = []
+  coins = []
+  goal = object
+    x = 92
+    y = -72
+    w = 14
+    h = 32
+  end
+  score = 0
+  gameOver = false
+  win = false
+  message = "Collect the coins, then reach the goal."
+end
+
+titleText = ${title}
+controlsText = ${controlsText}
+
+resetGame = function()
+  game.player.x = -72
+  game.player.y = 58
+  game.player.vx = 0
+  game.player.vy = 0
+  game.player.grounded = false
+
+  game.platforms = []
+  game.platforms.push(object x = 0 y = 84 w = 220 h = 18 end)
+  game.platforms.push(object x = -60 y = 44 w = 76 h = 10 end)
+  game.platforms.push(object x = 18 y = 8 w = 72 h = 10 end)
+  game.platforms.push(object x = -84 y = -26 w = 54 h = 10 end)
+  game.platforms.push(object x = 8 y = -54 w = 62 h = 10 end)
+
+  game.coins = []
+  game.coins.push(object x = -58 y = 26 collected = false end)
+  game.coins.push(object x = -6 y = -4 collected = false end)
+  game.coins.push(object x = 40 y = -28 collected = false end)
+  game.coins.push(object x = 76 y = -66 collected = false end)
+
+  game.score = 0
+  game.gameOver = false
+  game.win = false
+  game.message = "Collect the coins, then reach the goal."
+end
+
+rectsOverlap = function(ax, ay, aw, ah, bx, byPos, bw, bh)
+  return abs(ax - bx) < (aw + bw) * 0.5 and abs(ay - byPos) < (ah + bh) * 0.5
+end
+
+updatePlayer = function()
+  previousY = game.player.y
+
+  if keyboard.LEFT then
+    game.player.vx -= 0.45
+  end
+  if keyboard.RIGHT then
+    game.player.vx += 0.45
+  end
+  if (keyboard.press.SPACE or keyboard.press.UP or keyboard.press.KEY_Z) and game.player.grounded then
+    game.player.vy = -8.5
+    game.player.grounded = false
+  end
+
+  game.player.vx *= 0.88
+  game.player.vy += 0.42
+  if game.player.vy > 9 then
+    game.player.vy = 9
+  end
+
+  game.player.x += game.player.vx
+  game.player.y += game.player.vy
+  game.player.grounded = false
+
+  if game.player.x < -104 then
+    game.player.x = -104
+    game.player.vx = 0
+  end
+  if game.player.x > 104 then
+    game.player.x = 104
+    game.player.vx = 0
+  end
+  if game.player.y > 104 then
+    game.player.y = 104
+    game.player.vy = 0
+    game.player.grounded = true
+  end
+
+  for i = 0 to game.platforms.length - 1
+    platform = game.platforms[i]
+    if rectsOverlap(game.player.x, game.player.y, game.player.w, game.player.h, platform.x, platform.y, platform.w, platform.h) then
+      platformTop = platform.y - platform.h * 0.5
+      playerBottomBeforeMove = previousY + game.player.h * 0.5
+      if game.player.vy >= 0 and playerBottomBeforeMove <= platformTop + 6 then
+        game.player.y = platformTop - game.player.h * 0.5
+        game.player.vy = 0
+        game.player.grounded = true
+      end
+    end
+  end
+end
+
+collectCoins = function()
+  for i = 0 to game.coins.length - 1
+    coin = game.coins[i]
+    if not coin.collected then
+      if rectsOverlap(game.player.x, game.player.y, game.player.w, game.player.h, coin.x, coin.y, 10, 10) then
+        coin.collected = true
+        game.score += 1
+      end
+    end
+  end
+end
+
+updateGoalState = function()
+  allCoinsCollected = game.score >= game.coins.length
+  if allCoinsCollected then
+    if rectsOverlap(game.player.x, game.player.y, game.player.w, game.player.h, game.goal.x, game.goal.y, game.goal.w, game.goal.h) then
+      game.win = true
+      game.gameOver = true
+      game.message = "Goal reached. Press Space or R to restart."
+    else
+      game.message = "All coins collected. Reach the goal on the right."
+    end
+  end
+end
+
+init = function()
+  resetGame()
+end
+
+update = function()
+  if keyboard.press.SPACE or keyboard.press.KEY_R then
+    resetGame()
+    return
+  end
+  if game.gameOver then
+    return
+  end
+
+  updatePlayer()
+  collectCoins()
+  updateGoalState()
+end
+
+draw = function()
+  screen.fillRect(0, 0, screen.width, screen.height, "#08111f")
+  screen.drawText(titleText, 0, -92, 8, "#dbeafe")
+  screen.drawText(game.message, 0, 92, 5, "#cbd5e1")
+  screen.drawText("Coins: " + game.score + " / " + game.coins.length, 0, -78, 5, "#94a3b8")
+  screen.drawText(controlsText, 0, 78, 5, "#94a3b8")
+
+  for i = 0 to game.platforms.length - 1
+    platform = game.platforms[i]
+    screen.fillRect(platform.x, platform.y, platform.w, platform.h, "#334155")
+  end
+
+  goalColor = "#64748b"
+  if game.score >= game.coins.length then
+    goalColor = "#22c55e"
+  end
+  screen.fillRect(game.goal.x, game.goal.y, game.goal.w, game.goal.h, goalColor)
+  screen.drawText("GOAL", game.goal.x, game.goal.y - 20, 5, "#e2e8f0")
+
+  for i = 0 to game.coins.length - 1
+    coin = game.coins[i]
+    if not coin.collected then
+      screen.fillRound(coin.x, coin.y, 10, 10, "#fbbf24")
+    end
+  end
+
+  screen.fillRound(game.player.x, game.player.y, game.player.w, game.player.h, "#38bdf8")
+  screen.drawRound(game.player.x, game.player.y, game.player.w + 1, game.player.h + 1, "#0ea5e9")
+
+  if game.gameOver then
+    if game.win then
+      screen.drawText("You win", 0, -6, 10, "#fca5a5")
+    else
+      screen.drawText("Game Over", 0, -6, 10, "#fca5a5")
+    end
+  end
+end
+`;
+}
+
+function buildMicroScriptShooterFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
+  const description = JSON.stringify((plan.project && plan.project.description) || "");
+  const controlsText = JSON.stringify("Arrow keys to move | Space to fire | R to restart");
+  return `// ${title}
+// ${description}
+// Safe microStudio microScript shooter starter.
+
+game = object
+  player = object
+    x = 0
+    y = 72
+    w = 12
+    h = 12
+    fireCooldown = 0
+  end
+  bullets = []
+  enemies = []
+  score = 0
+  lives = 3
+  spawnTimer = 0
+  gameOver = false
+  message = "Move, shoot, survive."
+end
+
+titleText = ${title}
+controlsText = ${controlsText}
+
+resetGame = function()
+  game.player.x = 0
+  game.player.y = 72
+  game.player.fireCooldown = 0
+  game.bullets = []
+  game.enemies = []
+  game.score = 0
+  game.lives = 3
+  game.spawnTimer = 0
+  game.gameOver = false
+  game.message = "Move, shoot, survive."
+end
+
+hit = function(ax, ay, aw, ah, bx, byPos, bw, bh)
+  return abs(ax - bx) < (aw + bw) * 0.5 and abs(ay - byPos) < (ah + bh) * 0.5
+end
+
+spawnEnemy = function()
+  if game.enemies.length >= 18 then
+    return
+  end
+  enemy = object
+    x = random.next() * 176 - 88
+    y = -98
+    w = 12
+    h = 12
+    vx = (random.next() - 0.5) * 1.1
+    vy = 1.3 + random.next() * 1.5
+  end
+  game.enemies.push(enemy)
+end
+
+fireBullet = function()
+  if game.bullets.length >= 18 then
+    return
+  end
+  game.bullets.push(object
+    x = game.player.x
+    y = game.player.y - 12
+    w = 4
+    h = 8
+    vy = -5.5
+  end)
+end
+
+updatePlayer = function()
+  if keyboard.LEFT then
+    game.player.x -= 2.8
+  end
+  if keyboard.RIGHT then
+    game.player.x += 2.8
+  end
+  if keyboard.UP then
+    game.player.y -= 2.2
+  end
+  if keyboard.DOWN then
+    game.player.y += 2.2
+  end
+
+  if game.player.x < -94 then
+    game.player.x = -94
+  end
+  if game.player.x > 94 then
+    game.player.x = 94
+  end
+  if game.player.y < -78 then
+    game.player.y = -78
+  end
+  if game.player.y > 84 then
+    game.player.y = 84
+  end
+
+  if game.player.fireCooldown > 0 then
+    game.player.fireCooldown -= 1
+  end
+  if keyboard.press.SPACE and game.player.fireCooldown <= 0 then
+    fireBullet()
+    game.player.fireCooldown = 8
+  end
+end
+
+updateBullets = function()
+  for i = game.bullets.length - 1 to 0 by -1
+    bullet = game.bullets[i]
+    bullet.y += bullet.vy
+    if bullet.y < -110 then
+      game.bullets.remove(i)
+    end
+  end
+end
+
+updateEnemies = function()
+  game.spawnTimer -= 1
+  if game.spawnTimer <= 0 then
+    game.spawnTimer = 30
+    spawnEnemy()
+  end
+
+  for i = game.enemies.length - 1 to 0 by -1
+    enemy = game.enemies[i]
+    enemy.x += enemy.vx
+    enemy.y += enemy.vy
+
+    if enemy.x < -104 or enemy.x > 104 then
+      enemy.vx = -enemy.vx
+    end
+
+    if hit(game.player.x, game.player.y, game.player.w, game.player.h, enemy.x, enemy.y, enemy.w, enemy.h) then
+      game.enemies.remove(i)
+      game.lives -= 1
+      if game.lives <= 0 then
+        game.gameOver = true
+      end
+    elsif enemy.y > 110 then
+      game.enemies.remove(i)
+      game.lives -= 1
+      if game.lives <= 0 then
+        game.gameOver = true
+      end
+    end
+  end
+end
+
+resolveBulletHits = function()
+  for i = game.bullets.length - 1 to 0 by -1
+    bullet = game.bullets[i]
+    removed = false
+    for j = game.enemies.length - 1 to 0 by -1
+      enemy = game.enemies[j]
+      if hit(bullet.x, bullet.y, bullet.w, bullet.h, enemy.x, enemy.y, enemy.w, enemy.h) then
+        game.enemies.remove(j)
+        game.bullets.remove(i)
+        game.score += 1
+        removed = true
+        break
+      end
+    end
+  end
+end
+
+init = function()
+  resetGame()
+end
+
+update = function()
+  if keyboard.press.SPACE or keyboard.press.KEY_R then
+    resetGame()
+    return
+  end
+  if game.gameOver then
+    return
+  end
+
+  updatePlayer()
+  updateBullets()
+  updateEnemies()
+  resolveBulletHits()
+end
+
+draw = function()
+  screen.fillRect(0, 0, screen.width, screen.height, "#05111f")
+  screen.drawText(titleText, 0, -92, 8, "#dbeafe")
+  screen.drawText("Score: " + game.score + "  Lives: " + game.lives, 0, -78, 5, "#cbd5e1")
+  screen.drawText(controlsText, 0, 92, 5, "#94a3b8")
+  screen.drawText(game.message, 0, 78, 5, "#94a3b8")
+
+  screen.fillRound(game.player.x, game.player.y, game.player.w, game.player.h, "#38bdf8")
+  screen.drawRound(game.player.x, game.player.y, game.player.w + 1, game.player.h + 1, "#0ea5e9")
+
+  for i = 0 to game.bullets.length - 1
+    bullet = game.bullets[i]
+    screen.fillRect(bullet.x, bullet.y, bullet.w, bullet.h, "#fbbf24")
+  end
+
+  for i = 0 to game.enemies.length - 1
+    enemy = game.enemies[i]
+    screen.fillRound(enemy.x, enemy.y, enemy.w, enemy.h, "#fb7185")
+  end
+
+  if game.gameOver then
+    screen.drawText("Game Over", 0, -6, 10, "#fca5a5")
+    screen.drawText("Press Space or R to restart", 0, 10, 6, "#f8fafc")
+  end
+end
+`;
+}
+
 function buildFallbackGameCode(plan, resolvedPhysics, language = "microScript", request = null) {
   const config = gameLanguageConfig(language);
   if (config.language === "microStudioJavaScript") {
     if (isTicTacToeRequest(request)) {
       return buildMicroStudioJavaScriptTicTacToeFallbackGameCode(plan, request);
     }
+    if (isPlatformerRequest(request)) {
+      return buildMicroStudioJavaScriptPlatformerFallbackGameCode(plan, request);
+    }
+    if (isShooterRequest(request)) {
+      return buildMicroStudioJavaScriptShooterFallbackGameCode(plan, request);
+    }
     return buildMicroStudioJavaScriptFallbackGameCode(plan, resolvedPhysics, request);
+  }
+  if (isPlatformerRequest(request)) {
+    return buildMicroScriptPlatformerFallbackGameCode(plan, request);
+  }
+  if (isShooterRequest(request)) {
+    return buildMicroScriptShooterFallbackGameCode(plan, request);
   }
   const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
   const description = JSON.stringify((plan.project && plan.project.description) || "");
@@ -1134,6 +1989,8 @@ function buildMicroScriptSystemPrompt(request, resolvedPhysics) {
     "Do not generate JavaScript syntax, and do not mix languages.",
     "Prefer microStudio drawing/input APIs such as screen.fillRect, screen.drawText, screen.drawSprite, screen.drawLine, keyboard.press.KEY_R, mouse.pressed, mouse.x, mouse.y, and touch when appropriate.",
     "If the prompt suggests a grid, board, puzzle, or turn-based game, build a microStudio-friendly mouse-driven starter with simple shapes, text, or grid lines instead of browser canvas code.",
+    "If the prompt suggests a platformer, build a side-scrolling starter with gravity, jumping, simple platform collision, and a small number of collectible or goal objects.",
+    "If the prompt suggests a shooter, build an arcade shooter starter with movement, firing, enemy spawning, and bounded bullets or projectiles.",
     resolvedPhysics ? "Matter.js is enabled; create and clear the engine safely and keep body counts bounded." : "Do not use Matter.js unless the game concept explicitly needs rigid-body physics.",
     `Use ${mainPathForLanguage("microScript")} in the JSON schema, and keep the generated code free of browser/network/DOM APIs.`,
     "Use microScript operators and syntax only: object/end, if/then/else/elsif, and/or/not, ==/!=, floor(), random.next().",
@@ -1153,6 +2010,8 @@ function buildMicroStudioJavaScriptSystemPrompt(request, resolvedPhysics) {
     "Use microStudio runtime objects and methods such as screen.fillRect, screen.drawText, screen.drawSprite, screen.drawLine, screen.drawRound, screen.fillRound, keyboard.press.KEY_R, mouse.pressed, mouse.x, mouse.y, and touch when appropriate.",
     "Do not use browser or canvas APIs such as line(), circle(), rect(), fillText(), strokeText(), strokeStyle, fillStyle, document, window, addEventListener, onMouseDown, onMouseUp, or onClick.",
     "If the prompt suggests a grid, board, puzzle, or turn-based game, build a microStudio-friendly mouse-driven starter using screen drawing and mouse input rather than browser canvas code.",
+    "If the prompt suggests a platformer, build a side-scrolling starter with gravity, jumping, simple platform collision, and a small number of collectible or goal objects.",
+    "If the prompt suggests a shooter, build an arcade shooter starter with movement, firing, enemy spawning, and bounded bullets or projectiles.",
     resolvedPhysics ? "Matter.js is enabled; create and clear the engine safely and keep body counts bounded." : "Do not use Matter.js unless the game concept explicitly needs rigid-body physics.",
     `Use ${mainPathForLanguage("microStudioJavaScript")} in the JSON schema, and keep the generated code free of browser/network/DOM APIs.`,
     "Use microStudio JavaScript syntax only: function declarations, braces, semicolons, const/let, Math.*, ===/!==, &&/||, and !.",
@@ -2274,9 +3133,14 @@ class AiGameGeneratorService {
     const validation = validateGeneratedCodeForLanguage(code, config.language);
     if (!validation.ok) {
       if (config.language === "microStudioJavaScript") {
-        warnings.push(isTicTacToeRequest(request)
+        const fallbackGenre = fallbackGenreName(request);
+        warnings.push(fallbackGenre === "ticTacToe"
           ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio tic-tac-toe fallback was inserted."
-          : "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. It used unsupported APIs such as line(), fillText(), strokeStyle, or onMouseDown(). The code was rejected and replaced with a safe microStudio-compatible fallback.");
+          : fallbackGenre === "platformer"
+            ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio platformer fallback was inserted."
+            : fallbackGenre === "shooter"
+              ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio shooter fallback was inserted."
+              : "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. It used unsupported APIs such as line(), fillText(), strokeStyle, or onMouseDown(). The code was rejected and replaced with a safe microStudio-compatible fallback.");
       } else {
         warnings.push(`Invalid microScript in ${sourcePath || config.modelSourcePath}; fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`);
       }
@@ -3054,5 +3918,9 @@ module.exports = {
   validateJavaScriptCode,
   validateMicroStudioRuntimeApiUsage,
   buildMicroStudioJavaScriptTicTacToeFallbackGameCode,
+  buildMicroStudioJavaScriptPlatformerFallbackGameCode,
+  buildMicroStudioJavaScriptShooterFallbackGameCode,
+  buildMicroScriptPlatformerFallbackGameCode,
+  buildMicroScriptShooterFallbackGameCode,
   gameLanguageConfig
 };
