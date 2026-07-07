@@ -285,6 +285,7 @@ class @Runtime
       when "maps"
         @updateMap(file,version,data)
       when "ms"
+        @updateCode(file,version,data)
       when "js"
         @updateCode(file,version,data)
 
