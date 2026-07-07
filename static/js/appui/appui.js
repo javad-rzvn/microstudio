@@ -1181,6 +1181,7 @@ AppUI = class AppUI {
     this.aiAdminProviders = [];
     this.aiProviderAdminOpen = false;
     this.aiProviderDraftId = null;
+    this.aiRequestAbortController = null;
     this.setAction("ai-generator-generate", () => {
       return this.generateAiDraft();
     });
@@ -1200,7 +1201,7 @@ AppUI = class AppUI {
       return this.applyAiDraft("new_project");
     });
     this.setAction("ai-generator-cancel", () => {
-      return this.setSection("code", true);
+      return this.cancelAiRequest();
     });
     this.setAction("ai-provider-admin-button", () => {
       return this.toggleAiProviderAdminPanel();
@@ -1509,6 +1510,21 @@ AppUI = class AppUI {
     return this.updateAiGeneratorButtons();
   }
 
+  isAiAbortError(err) {
+    var _ref;
+    return ((_ref = err == null ? void 0 : err.name) === "AbortError" || (err == null ? void 0 : err.code) === 20);
+  }
+
+  cancelAiRequest(message = "Generation cancelled.") {
+    if (this.aiRequestAbortController != null) {
+      this.aiRequestAbortController.abort();
+      this.aiRequestAbortController = null;
+      this.setAiBusy(false);
+      this.setAiStatus(message);
+    }
+    return this.setSection("code", true);
+  }
+
   renderAiSummary(draft) {
     var container, entry, row, rows;
     container = this.get("ai-generator-summary");
@@ -1807,6 +1823,9 @@ AppUI = class AppUI {
       this.setAiBusy(false);
       return this.renderAiDraft(draft);
     }, (err) => {
+      if (this.isAiAbortError(err)) {
+        return;
+      }
       this.setAiBusy(false);
       this.setAiStatus(err.message || "Image regeneration failed", true);
       return this.setAiWarnings([err.message || "Image regeneration failed"]);
@@ -1844,14 +1863,24 @@ AppUI = class AppUI {
   }
 
   postAiRequest(url, payload) {
-    return fetch(url, {
+    var controller, options;
+    controller = null;
+    if (window.AbortController != null) {
+      controller = new AbortController();
+      this.aiRequestAbortController = controller;
+    }
+    options = {
       method: "POST",
       credentials: "same-origin",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload)
-    }).then((response) => {
+    };
+    if (controller != null) {
+      options.signal = controller.signal;
+    }
+    return fetch(url, options).then((response) => {
       return response.text().then((text) => {
         var data, err;
         data = null;
@@ -1871,6 +1900,10 @@ AppUI = class AppUI {
         }
         return data;
       });
+    }).finally(() => {
+      if ((controller != null) && this.aiRequestAbortController === controller) {
+        return this.aiRequestAbortController = null;
+      }
     });
   }
 
@@ -1892,6 +1925,9 @@ AppUI = class AppUI {
       this.renderAiDraft(draft);
       return this.selectAiDraftFile(draft.preview != null && draft.preview.length > 0 ? draft.preview[0].path : null);
     }, (err) => {
+      if (this.isAiAbortError(err)) {
+        return;
+      }
       this.setAiBusy(false);
       this.setAiStatus(err.message || "Generation failed", true);
       return this.setAiWarnings([err.message || "Generation failed"]);
@@ -1912,6 +1948,9 @@ AppUI = class AppUI {
       this.renderAiDraft(draft);
       return this.selectAiDraftFile(draft.preview != null && draft.preview.length > 0 ? draft.preview[0].path : null);
     }, (err) => {
+      if (this.isAiAbortError(err)) {
+        return;
+      }
       this.setAiBusy(false);
       this.setAiStatus(err.message || "Regeneration failed", true);
       return this.setAiWarnings([err.message || "Regeneration failed"]);
@@ -1936,6 +1975,9 @@ AppUI = class AppUI {
       this.setAiExplanation(data.explanation || "");
       return this.setAiStatus("Explanation ready.");
     }, (err) => {
+      if (this.isAiAbortError(err)) {
+        return;
+      }
       this.setAiBusy(false);
       this.setAiStatus(err.message || "Explanation failed", true);
       return this.setAiExplanation("");
@@ -1969,6 +2011,9 @@ AppUI = class AppUI {
       }, 0);
       return this.setAiStatus("Draft JSON exported.");
     }, (err) => {
+      if (this.isAiAbortError(err)) {
+        return;
+      }
       this.setAiBusy(false);
       return this.setAiStatus(err.message || "Export failed", true);
     });
@@ -2030,6 +2075,9 @@ AppUI = class AppUI {
           }
           return this.app.showNotification(targetMode === "new_project" ? "AI project created" : "AI draft applied");
         }, (err) => {
+          if (this.isAiAbortError(err)) {
+            return;
+          }
           this.setAiBusy(false);
           this.setAiStatus(err.message || "Apply failed", true);
           return this.setAiWarnings([err.message || "Apply failed"]);

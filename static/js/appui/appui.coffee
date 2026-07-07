@@ -477,6 +477,7 @@ class AppUI
     @aiAdminProviders = []
     @aiProviderAdminOpen = false
     @aiProviderDraftId = null
+    @aiRequestAbortController = null
 
     @setAction "ai-generator-generate",()=>
       @generateAiDraft()
@@ -497,7 +498,7 @@ class AppUI
       @applyAiDraft "new_project"
 
     @setAction "ai-generator-cancel",()=>
-      @setSection "code",true
+      @cancelAiRequest()
 
     @setAction "ai-provider-admin-button",()=>
       @toggleAiProviderAdminPanel()
@@ -1358,6 +1359,17 @@ class AppUI
       @setAiStatus "Working on the draft..."
     @updateAiGeneratorButtons()
 
+  isAiAbortError:(err)->
+    return err?.name == "AbortError" or err?.code == 20
+
+  cancelAiRequest:(message="Generation cancelled.")->
+    if @aiRequestAbortController?
+      @aiRequestAbortController.abort()
+      @aiRequestAbortController = null
+      @setAiBusy false
+      @setAiStatus message
+    @setSection "code",true
+
   renderAiSummary:(draft)->
     container = @get("ai-generator-summary")
     return if not container?
@@ -1580,6 +1592,7 @@ class AppUI
       @setAiBusy false
       @renderAiDraft draft
     ,(err)=>
+      return if @isAiAbortError(err)
       @setAiBusy false
       @setAiStatus(err.message or "Image regeneration failed", true)
       @setAiWarnings [err.message or "Image regeneration failed"]
@@ -1610,12 +1623,21 @@ class AppUI
       includeTutorialComments: true
 
   postAiRequest:(url,payload)->
-    fetch url,
+    controller = null
+    if window.AbortController?
+      controller = new AbortController()
+      @aiRequestAbortController = controller
+
+    options =
       method: "POST"
       credentials: "same-origin"
       headers:
         "Content-Type": "application/json"
       body: JSON.stringify payload
+    if controller?
+      options.signal = controller.signal
+
+    fetch url,options
     .then (response)=>
       response.text().then (text)=>
         data = null
@@ -1630,6 +1652,9 @@ class AppUI
           err.response = data
           throw err
         data
+    .finally =>
+      if controller? and @aiRequestAbortController == controller
+        @aiRequestAbortController = null
 
   generateAiDraft:()->
     payload = @getAiRequestPayload()
@@ -1646,6 +1671,7 @@ class AppUI
       @renderAiDraft draft
       @selectAiDraftFile(if draft.preview? and draft.preview.length > 0 then draft.preview[0].path else null)
     ,(err)=>
+      return if @isAiAbortError(err)
       @setAiBusy false
       @setAiStatus(err.message or "Generation failed", true)
       @setAiWarnings [err.message or "Generation failed"]
@@ -1664,6 +1690,7 @@ class AppUI
       @renderAiDraft draft
       @selectAiDraftFile(if draft.preview? and draft.preview.length > 0 then draft.preview[0].path else null)
     ,(err)=>
+      return if @isAiAbortError(err)
       @setAiBusy false
       @setAiStatus(err.message or "Regeneration failed", true)
       @setAiWarnings [err.message or "Regeneration failed"]
@@ -1684,6 +1711,7 @@ class AppUI
       @setAiExplanation data.explanation or ""
       @setAiStatus "Explanation ready."
     ,(err)=>
+      return if @isAiAbortError(err)
       @setAiBusy false
       @setAiStatus(err.message or "Explanation failed", true)
       @setAiExplanation ""
@@ -1711,6 +1739,7 @@ class AppUI
       ,0
       @setAiStatus "Draft JSON exported."
     ,(err)=>
+      return if @isAiAbortError(err)
       @setAiBusy false
       @setAiStatus(err.message or "Export failed", true)
     )
@@ -1743,6 +1772,7 @@ class AppUI
             @app.updateProjectList()
           @app.showNotification(if targetMode == "new_project" then "AI project created" else "AI draft applied")
         ,(err)=>
+          return if @isAiAbortError(err)
           @setAiBusy false
           @setAiStatus(err.message or "Apply failed", true)
           @setAiWarnings [err.message or "Apply failed"]
