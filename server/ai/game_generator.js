@@ -756,44 +756,175 @@ function buildGeneratedAssetManifestFile(normalized, request) {
   };
 }
 
+
+function fallbackRequestText(request) {
+  return `${request && request.idea ? request.idea : ""} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
+}
+
+function isArcadeCollectorRequest(request) {
+  const text = fallbackRequestText(request);
+  return /arcade|collector|collect|catch|falling|falling star|dodge|avoid|survival|score attack/.test(text);
+}
+
+function hasSpecificFallbackIntent(request) {
+  const text = fallbackRequestText(request).replace(/\s+/g, " ").trim();
+  if (!text) {
+    return false;
+  }
+  if (/^(create|make|build|generate)?\s*(a|an)?\s*(simple|basic)?\s*(2d)?\s*(game|starter|demo|prototype)?\s*$/.test(text)) {
+    return false;
+  }
+  if (isArcadeCollectorRequest(request)) {
+    return false;
+  }
+  return text.length >= 18 || /\b(game|clone|simulator|simulation|board|card|sport|sports|football|soccer|basketball|chess|checkers|tower defense|defense|defence|roguelike|rpg|strategy|rhythm|quiz|trivia|educational|word|drawing|paint|sandbox|idle|clicker|fighting|battle|platform|race|racing|maze|snake|pong|breakout|flappy|tetris|pacman|pac-man|space invaders)\b/.test(text);
+}
+
+function isSnakeRequest(request) {
+  return /\bsnake\b|snake[-\s]?game|serpent/.test(fallbackRequestText(request));
+}
+
+function isPongRequest(request) {
+  return /\bpong\b|table tennis|paddle game|ping[-\s]?pong/.test(fallbackRequestText(request));
+}
+
+function isBreakoutRequest(request) {
+  return /\bbreakout\b|brick breaker|brick[-\s]?breaker|arkanoid/.test(fallbackRequestText(request));
+}
+
+function isFlappyRequest(request) {
+  return /\bflappy\b|flappy bird|tap to fly|flying through pipes/.test(fallbackRequestText(request));
+}
+
+function validateGeneratedIntentForRequest(code, request, language) {
+  const text = typeof code === "string" ? code.toLowerCase() : "";
+  const errors = [];
+  const has = (pattern) => pattern.test(text);
+  const wrongArcadeFallback = /stars|spawnstar|falling|lives|game\.player\.vx|player\.vx|collectible_star/.test(text);
+
+  if (isTicTacToeRequest(request)) {
+    if (!has(/board|grid/) || !has(/currentplayer|current_player|turn/) || !has(/checkwin|winner/) || !has(/"x"|'x'/) || !has(/"o"|'o'/)) {
+      errors.push("Tic-tac-toe request must implement a 3x3 board, turns, X/O marks, and win detection.");
+    }
+    if (wrongArcadeFallback) {
+      errors.push("Tic-tac-toe request cannot be replaced by an arcade collector/falling-stars game.");
+    }
+  }
+
+  if (isPuzzlePlatformerRequest(request)) {
+    if (!has(/platform/) || !has(/jump|grounded|gravity|vy/) || !has(/key|switch|door|exit|goal/)) {
+      errors.push("Puzzle-platformer request must include platform movement plus a puzzle/gate condition.");
+    }
+  } else if (isPlatformerRequest(request)) {
+    if (!has(/platform/) || !has(/jump|grounded|gravity|vy/) || !has(/goal|exit|coin|collect/)) {
+      errors.push("Platformer request must include platforms, jumping/gravity, and a goal or collectible.");
+    }
+  }
+
+  if (isShooterRequest(request)) {
+    if (!has(/bullet|projectile|laser|shot/) || !has(/enemy|target|asteroid/) || !has(/fire|shoot|cooldown|space/)) {
+      errors.push("Shooter request must include firing, bounded projectiles, and enemies or targets.");
+    }
+  }
+
+  if (isRacingRequest(request)) {
+    if (!has(/car|vehicle|racer/) || !has(/track|gate|checkpoint|lap|finish/) || !has(/speed|steer|vx|vy/)) {
+      errors.push("Racing request must include a vehicle, track/checkpoints, speed/steering, and finish logic.");
+    }
+  }
+
+  if (isTopDownAdventureRequest(request)) {
+    if (!has(/wall|room|dungeon|maze/) || !has(/key|door|exit|quest|goal/) || !has(/player/)) {
+      errors.push("Top-down adventure request must include exploration, obstacles, and a key/door/exit or quest goal.");
+    }
+  }
+
+  if (isPuzzleRequest(request) && !isTicTacToeRequest(request) && !isPuzzlePlatformerRequest(request)) {
+    if (!has(/board|grid|tile|puzzle|move|match|memory|maze/) || !has(/win|solved|complete|goal/)) {
+      errors.push("Puzzle request must include a board/grid/tile state and a clear solved/win condition.");
+    }
+  }
+
+  if (isSnakeRequest(request)) {
+    if (!has(/snake/) || !has(/food/) || !has(/direction/) || !has(/segments|body/)) {
+      errors.push("Snake request must include snake body segments, direction, food, and growth/collision logic.");
+    }
+  }
+
+  if (isPongRequest(request)) {
+    if (!has(/paddle/) || !has(/ball/) || !has(/score/)) {
+      errors.push("Pong request must include paddles, a ball, scoring, and bounce logic.");
+    }
+  }
+
+  if (isBreakoutRequest(request)) {
+    if (!has(/paddle/) || !has(/ball/) || !has(/brick/)) {
+      errors.push("Breakout request must include a paddle, ball, bricks, and brick collision logic.");
+    }
+  }
+
+  if (isFlappyRequest(request)) {
+    if (!has(/bird|player/) || !has(/pipe|gate|obstacle/) || !has(/flap|gravity|vy/)) {
+      errors.push("Flappy-style request must include flap/gravity movement and pipe/obstacle gaps.");
+    }
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors
+  };
+}
+
 function isTicTacToeRequest(request) {
-  const text = `${request && request.idea ? request.idea : ""} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
-  return /tic[-\s]?tac[-\s]?toe|noughts and crosses|three in a row|3x3|grid/.test(text);
+  const text = fallbackRequestText(request);
+  return /tic[-\s]?tac[-\s]?toe|tictactoe|noughts and crosses|naughts and crosses|three in a row|xo game|x\s*o\s*game|x-and-o|x and o/.test(text);
 }
 
 function isPlatformerRequest(request) {
-  const text = `${request && request.idea ? request.idea : ""} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
+  const text = fallbackRequestText(request);
   return /platformer|platform game|side[-\s]?scroller|side[-\s]?scroll|run[-\s]?and[-\s]?jump|jump[-\s]?game|metroidvania|runner/.test(text);
 }
 
 function isShooterRequest(request) {
-  const text = `${request && request.idea ? request.idea : ""} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
+  const text = fallbackRequestText(request);
   return /shooter|shoot[-\s]?em[-\s]?up|shmup|bullet[-\s]?hell|space[-\s]?shooter|top[-\s]?down[-\s]?shooter|arena[-\s]?shooter|arcade[-\s]?shooter|blaster/.test(text);
 }
 
 function isPuzzleRequest(request) {
-  const text = `${request && request.idea ? request.idea : ""} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
+  const text = fallbackRequestText(request);
   return /puzzle|logic|brain|matching|match[-\s]?3|slide|sliding|swap|tile|sokoban|maze|memory|jigsaw|word[-\s]?game|brain[-\s]?teaser/.test(text);
 }
 
 function isRacingRequest(request) {
-  const text = `${request && request.idea ? request.idea : ""} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
+  const text = fallbackRequestText(request);
   return /racing|race|racer|driving|drive|kart|karting|formula|lap|time trial|track|circuit|road trip|car game|vehicle/.test(text);
 }
 
 function isTopDownAdventureRequest(request) {
-  const text = `${request && request.idea ? request.idea : ""} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
+  const text = fallbackRequestText(request);
   return /top[-\s]?down|overhead|overworld|dungeon|dungeon crawler|quest|exploration|rpg|zelda[-\s]?like|action[-\s]?adventure|maze|adventure game/.test(text);
 }
 
 function isPuzzlePlatformerRequest(request) {
-  const text = `${request && request.idea ? request.idea : ""} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
+  const text = fallbackRequestText(request);
   return /puzzle[-\s]?platformer|platform[-\s]?puzzle|platforming puzzle|puzzle[-\s]?platform|key and door|switch puzzle|block puzzle platformer|platformer puzzle/.test(text);
 }
 
 function fallbackGenreName(request) {
   if (isTicTacToeRequest(request)) {
     return "ticTacToe";
+  }
+  if (isSnakeRequest(request)) {
+    return "intentPrototype";
+  }
+  if (isPongRequest(request)) {
+    return "intentPrototype";
+  }
+  if (isBreakoutRequest(request)) {
+    return "intentPrototype";
+  }
+  if (isFlappyRequest(request)) {
+    return "intentPrototype";
   }
   if (isPuzzlePlatformerRequest(request)) {
     return "puzzlePlatformer";
@@ -807,14 +938,14 @@ function fallbackGenreName(request) {
   if (isPuzzleRequest(request)) {
     return "puzzle";
   }
-  if (isPuzzlePlatformerRequest(request)) {
-    return "puzzlePlatformer";
-  }
   if (isRacingRequest(request)) {
     return "racing";
   }
   if (isTopDownAdventureRequest(request)) {
     return "topDownAdventure";
+  }
+  if (hasSpecificFallbackIntent(request)) {
+    return "intentPrototype";
   }
   return null;
 }
@@ -3156,17 +3287,523 @@ end
 `;
 }
 
+
+function buildMicroScriptTicTacToeFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "Tic-Tac-Toe");
+  const description = JSON.stringify((plan.project && plan.project.description) || "");
+  const controlsText = JSON.stringify("Click a cell | Space or R to restart");
+  return `// ${title}
+// ${description}
+// Safe microStudio microScript tic-tac-toe starter.
+// This fallback is genre-aware: it matches tic-tac-toe requests instead of using the generic arcade collector.
+
+game = object
+  cells = []
+  currentPlayer = "X"
+  winner = ""
+  gameOver = false
+  prevMousePressed = false
+  boardLeft = -54
+  boardTop = -54
+  cellSize = 36
+  status = "Click a cell to play."
+end
+
+titleText = ${title}
+controlsText = ${controlsText}
+
+resetGame = function()
+  game.cells = ["", "", "", "", "", "", "", "", ""]
+  game.currentPlayer = "X"
+  game.winner = ""
+  game.gameOver = false
+  game.prevMousePressed = false
+  game.status = "X starts. Click a cell."
+end
+
+getCellIndex = function(x, y)
+  if x < game.boardLeft or y < game.boardTop then
+    return -1
+  end
+
+  if x >= game.boardLeft + game.cellSize * 3 or y >= game.boardTop + game.cellSize * 3 then
+    return -1
+  end
+
+  col = floor((x - game.boardLeft) / game.cellSize)
+  row = floor((y - game.boardTop) / game.cellSize)
+  return row * 3 + col
+end
+
+checkWinner = function()
+  cells = game.cells
+
+  if cells[0] != "" and cells[0] == cells[1] and cells[1] == cells[2] then
+    return cells[0]
+  end
+  if cells[3] != "" and cells[3] == cells[4] and cells[4] == cells[5] then
+    return cells[3]
+  end
+  if cells[6] != "" and cells[6] == cells[7] and cells[7] == cells[8] then
+    return cells[6]
+  end
+
+  if cells[0] != "" and cells[0] == cells[3] and cells[3] == cells[6] then
+    return cells[0]
+  end
+  if cells[1] != "" and cells[1] == cells[4] and cells[4] == cells[7] then
+    return cells[1]
+  end
+  if cells[2] != "" and cells[2] == cells[5] and cells[5] == cells[8] then
+    return cells[2]
+  end
+
+  if cells[0] != "" and cells[0] == cells[4] and cells[4] == cells[8] then
+    return cells[0]
+  end
+  if cells[2] != "" and cells[2] == cells[4] and cells[4] == cells[6] then
+    return cells[2]
+  end
+
+  return ""
+end
+
+checkDraw = function()
+  for i = 0 to game.cells.length - 1
+    if game.cells[i] == "" then
+      return false
+    end
+  end
+  return true
+end
+
+placeMove = function(index)
+  if index < 0 or index >= game.cells.length then
+    return
+  end
+
+  if game.cells[index] != "" or game.gameOver then
+    return
+  end
+
+  game.cells[index] = game.currentPlayer
+
+  result = checkWinner()
+  if result != "" then
+    game.gameOver = true
+    game.winner = result
+    game.status = result + " wins!"
+    return
+  end
+
+  if checkDraw() then
+    game.gameOver = true
+    game.winner = ""
+    game.status = "Draw."
+    return
+  end
+
+  if game.currentPlayer == "X" then
+    game.currentPlayer = "O"
+  else
+    game.currentPlayer = "X"
+  end
+
+  game.status = game.currentPlayer + " to play."
+end
+
+handlePointer = function(x, y)
+  index = getCellIndex(x, y)
+  if index >= 0 then
+    placeMove(index)
+  end
+end
+
+init = function()
+  resetGame()
+end
+
+update = function()
+  if keyboard.press.SPACE or keyboard.press.KEY_R or keyboard.press.R then
+    resetGame()
+    return
+  end
+
+  pointerPressed = mouse.pressed or mouse.press
+
+  if pointerPressed and not game.prevMousePressed then
+    handlePointer(mouse.x, mouse.y)
+  end
+
+  game.prevMousePressed = pointerPressed
+end
+
+drawX = function(x, y, size)
+  halfSize = size / 2
+  screen.drawLine(x - halfSize, y - halfSize, x + halfSize, y + halfSize, "#f8fafc")
+  screen.drawLine(x - halfSize, y + halfSize, x + halfSize, y - halfSize, "#f8fafc")
+end
+
+drawO = function(x, y, size)
+  screen.drawRound(x, y, size, size, "#fbbf24")
+end
+
+draw = function()
+  screen.fillRect(0, 0, screen.width, screen.height, "#0f172a")
+  screen.drawText(titleText, 0, -92, 8, "#e2e8f0")
+  screen.drawText(game.status, 0, 90, 5, "#cbd5e1")
+  screen.drawText(controlsText, 0, 76, 5, "#94a3b8")
+
+  boardSize = game.cellSize * 3
+  boardRight = game.boardLeft + boardSize
+  boardBottom = game.boardTop + boardSize
+
+  screen.drawLine(game.boardLeft, game.boardTop, boardRight, game.boardTop, "#64748b")
+  screen.drawLine(game.boardLeft, boardBottom, boardRight, boardBottom, "#64748b")
+  screen.drawLine(game.boardLeft, game.boardTop, game.boardLeft, boardBottom, "#64748b")
+  screen.drawLine(boardRight, game.boardTop, boardRight, boardBottom, "#64748b")
+
+  for i = 1 to 2
+    lineX = game.boardLeft + i * game.cellSize
+    lineY = game.boardTop + i * game.cellSize
+    screen.drawLine(lineX, game.boardTop, lineX, boardBottom, "#64748b")
+    screen.drawLine(game.boardLeft, lineY, boardRight, lineY, "#64748b")
+  end
+
+  for index = 0 to game.cells.length - 1
+    value = game.cells[index]
+    if value != "" then
+      col = index % 3
+      row = floor(index / 3)
+      centerX = game.boardLeft + col * game.cellSize + game.cellSize / 2
+      centerY = game.boardTop + row * game.cellSize + game.cellSize / 2
+
+      if value == "X" then
+        drawX(centerX, centerY, 22)
+      else
+        drawO(centerX, centerY, 22)
+      end
+    end
+  end
+
+  if game.gameOver then
+    if game.winner != "" then
+      screen.drawText(game.winner + " wins", 0, -6, 10, "#fca5a5")
+    else
+      screen.drawText("Draw", 0, -6, 10, "#fca5a5")
+    end
+  end
+end
+`;
+}
+
+
+
+function compactIdeaText(request, fallback = "this game") {
+  const text = String(request && request.idea ? request.idea : fallback).replace(/\s+/g, " ").trim();
+  return text.slice(0, 180) || fallback;
+}
+
+function buildMicroScriptIntentPrototypeFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
+  const description = JSON.stringify((plan.project && plan.project.description) || compactIdeaText(request));
+  const idea = JSON.stringify(compactIdeaText(request));
+  return `// ${title}
+// ${description}
+// Intent-preserving fallback prototype.
+// The model output was rejected, so this safe prototype keeps the requested idea visible instead of substituting another genre.
+
+game = object
+  player = object
+    x = -70
+    y = 42
+    vx = 0
+    vy = 0
+    size = 12
+  end
+  goal = object
+    x = 72
+    y = -42
+    size = 16
+  end
+  hazards = []
+  score = 0
+  won = false
+  message = "Prototype for requested idea"
+  requestText = ${idea}
+  maxHazards = 12
+  spawnTimer = 0
+end
+
+titleText = ${title}
+controlsText = "Arrow keys move | Reach goal | R restart"
+
+resetGame = function()
+  game.player.x = -70
+  game.player.y = 42
+  game.player.vx = 0
+  game.player.vy = 0
+  game.goal.x = 72
+  game.goal.y = -42
+  game.hazards = []
+  game.score = 0
+  game.won = false
+  game.message = "Prototype for requested idea"
+  game.spawnTimer = 0
+end
+
+spawnHazard = function()
+  if game.hazards.length >= game.maxHazards then
+    return
+  end
+  hazard = object
+    x = random.next() * 180 - 90
+    y = random.next() * 120 - 60
+    vx = (random.next() - 0.5) * 0.8
+    vy = (random.next() - 0.5) * 0.8
+    size = 8
+  end
+  game.hazards.push(hazard)
+end
+
+hit = function(ax, ay, a_size, bx, b_y, b_size)
+  return abs(ax - bx) < (a_size + b_size) * 0.55 and abs(ay - b_y) < (a_size + b_size) * 0.55
+end
+
+init = function()
+  resetGame()
+end
+
+update = function()
+  if keyboard.press.KEY_R or keyboard.press.SPACE then
+    resetGame()
+    return
+  end
+
+  if game.won then
+    return
+  end
+
+  if keyboard.LEFT then
+    game.player.vx -= 0.45
+  end
+  if keyboard.RIGHT then
+    game.player.vx += 0.45
+  end
+  if keyboard.UP then
+    game.player.vy -= 0.45
+  end
+  if keyboard.DOWN then
+    game.player.vy += 0.45
+  end
+
+  game.player.vx *= 0.86
+  game.player.vy *= 0.86
+  game.player.x += game.player.vx
+  game.player.y += game.player.vy
+
+  if game.player.x < -94 then game.player.x = -94 end
+  if game.player.x > 94 then game.player.x = 94 end
+  if game.player.y < -84 then game.player.y = -84 end
+  if game.player.y > 84 then game.player.y = 84 end
+
+  game.spawnTimer -= 1
+  if game.spawnTimer <= 0 then
+    game.spawnTimer = 45
+    spawnHazard()
+  end
+
+  for i = game.hazards.length - 1 to 0 by -1
+    hazard = game.hazards[i]
+    hazard.x += hazard.vx
+    hazard.y += hazard.vy
+    if hazard.x < -96 or hazard.x > 96 then hazard.vx = -hazard.vx end
+    if hazard.y < -86 or hazard.y > 86 then hazard.vy = -hazard.vy end
+    if hit(game.player.x, game.player.y, game.player.size, hazard.x, hazard.y, hazard.size) then
+      game.score -= 1
+      game.hazards.remove(i)
+    end
+  end
+
+  if hit(game.player.x, game.player.y, game.player.size, game.goal.x, game.goal.y, game.goal.size) then
+    game.won = true
+    game.score += 10
+    game.message = "Prototype goal reached"
+  end
+end
+
+draw = function()
+  screen.fillRect(0, 0, screen.width, screen.height, "#07111f")
+  screen.drawText(titleText, 0, -94, 8, "#dbeafe")
+  screen.drawText("Fallback prototype", 0, -80, 5, "#fbbf24")
+  screen.drawText(game.requestText, 0, -66, 4, "#cbd5e1")
+  screen.drawText(controlsText, 0, 92, 5, "#94a3b8")
+  screen.drawText("Score: " + game.score, 0, 78, 5, "#94a3b8")
+
+  screen.drawRound(game.goal.x, game.goal.y, game.goal.size, game.goal.size, "#22c55e")
+  screen.drawText("GOAL", game.goal.x, game.goal.y - 18, 5, "#86efac")
+
+  for i = 0 to game.hazards.length - 1
+    hazard = game.hazards[i]
+    screen.fillRound(hazard.x, hazard.y, hazard.size, hazard.size, "#fb7185")
+  end
+
+  screen.fillRound(game.player.x, game.player.y, game.player.size, game.player.size, "#38bdf8")
+  screen.drawRound(game.player.x, game.player.y, game.player.size + 2, game.player.size + 2, "#0ea5e9")
+
+  if game.won then
+    screen.drawText("Prototype complete", 0, -6, 10, "#86efac")
+    screen.drawText("Regenerate for exact mechanics", 0, 10, 5, "#f8fafc")
+  end
+end
+`;
+}
+
+function buildMicroStudioJavaScriptIntentPrototypeFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
+  const description = JSON.stringify((plan.project && plan.project.description) || compactIdeaText(request));
+  const idea = JSON.stringify(compactIdeaText(request));
+  return `// ${title}
+// ${description}
+// Intent-preserving fallback prototype.
+// The model output was rejected, so this safe prototype keeps the requested idea visible instead of substituting another genre.
+
+const game = {
+  player: { x: -70, y: 42, vx: 0, vy: 0, size: 12 },
+  goal: { x: 72, y: -42, size: 16 },
+  hazards: [],
+  score: 0,
+  won: false,
+  message: "Prototype for requested idea",
+  requestText: ${idea},
+  maxHazards: 12,
+  spawnTimer: 0
+};
+
+const titleText = ${title};
+const controlsText = "Arrow keys move | Reach goal | R restart";
+
+function resetGame() {
+  game.player.x = -70;
+  game.player.y = 42;
+  game.player.vx = 0;
+  game.player.vy = 0;
+  game.goal.x = 72;
+  game.goal.y = -42;
+  game.hazards = [];
+  game.score = 0;
+  game.won = false;
+  game.message = "Prototype for requested idea";
+  game.spawnTimer = 0;
+}
+
+function spawnHazard() {
+  if (game.hazards.length >= game.maxHazards) {
+    return;
+  }
+  game.hazards.push({
+    x: random.next() * 180 - 90,
+    y: random.next() * 120 - 60,
+    vx: (random.next() - 0.5) * 0.8,
+    vy: (random.next() - 0.5) * 0.8,
+    size: 8
+  });
+}
+
+function hit(ax, ay, aSize, bx, byPos, bSize) {
+  return Math.abs(ax - bx) < (aSize + bSize) * 0.55 && Math.abs(ay - byPos) < (aSize + bSize) * 0.55;
+}
+
+function init() {
+  resetGame();
+}
+
+function update() {
+  if (keyboard.press.KEY_R || keyboard.press.SPACE) {
+    resetGame();
+    return;
+  }
+
+  if (game.won) {
+    return;
+  }
+
+  if (keyboard.LEFT) game.player.vx -= 0.45;
+  if (keyboard.RIGHT) game.player.vx += 0.45;
+  if (keyboard.UP) game.player.vy -= 0.45;
+  if (keyboard.DOWN) game.player.vy += 0.45;
+
+  game.player.vx *= 0.86;
+  game.player.vy *= 0.86;
+  game.player.x += game.player.vx;
+  game.player.y += game.player.vy;
+
+  game.player.x = Math.max(-94, Math.min(94, game.player.x));
+  game.player.y = Math.max(-84, Math.min(84, game.player.y));
+
+  game.spawnTimer -= 1;
+  if (game.spawnTimer <= 0) {
+    game.spawnTimer = 45;
+    spawnHazard();
+  }
+
+  for (let i = game.hazards.length - 1; i >= 0; i -= 1) {
+    const hazard = game.hazards[i];
+    hazard.x += hazard.vx;
+    hazard.y += hazard.vy;
+    if (hazard.x < -96 || hazard.x > 96) hazard.vx = -hazard.vx;
+    if (hazard.y < -86 || hazard.y > 86) hazard.vy = -hazard.vy;
+    if (hit(game.player.x, game.player.y, game.player.size, hazard.x, hazard.y, hazard.size)) {
+      game.score -= 1;
+      game.hazards.splice(i, 1);
+    }
+  }
+
+  if (hit(game.player.x, game.player.y, game.player.size, game.goal.x, game.goal.y, game.goal.size)) {
+    game.won = true;
+    game.score += 10;
+    game.message = "Prototype goal reached";
+  }
+}
+
+function draw() {
+  screen.fillRect(0, 0, screen.width, screen.height, "#07111f");
+  screen.drawText(titleText, 0, -94, 8, "#dbeafe");
+  screen.drawText("Fallback prototype", 0, -80, 5, "#fbbf24");
+  screen.drawText(game.requestText, 0, -66, 4, "#cbd5e1");
+  screen.drawText(controlsText, 0, 92, 5, "#94a3b8");
+  screen.drawText("Score: " + game.score, 0, 78, 5, "#94a3b8");
+
+  screen.drawRound(game.goal.x, game.goal.y, game.goal.size, game.goal.size, "#22c55e");
+  screen.drawText("GOAL", game.goal.x, game.goal.y - 18, 5, "#86efac");
+
+  for (let i = 0; i < game.hazards.length; i += 1) {
+    const hazard = game.hazards[i];
+    screen.fillRound(hazard.x, hazard.y, hazard.size, hazard.size, "#fb7185");
+  }
+
+  screen.fillRound(game.player.x, game.player.y, game.player.size, game.player.size, "#38bdf8");
+  screen.drawRound(game.player.x, game.player.y, game.player.size + 2, game.player.size + 2, "#0ea5e9");
+
+  if (game.won) {
+    screen.drawText("Prototype complete", 0, -6, 10, "#86efac");
+    screen.drawText("Regenerate for exact mechanics", 0, 10, 5, "#f8fafc");
+  }
+}
+`;
+}
+
 function buildFallbackGameCode(plan, resolvedPhysics, language = "microScript", request = null) {
   const config = gameLanguageConfig(language);
   if (config.language === "microStudioJavaScript") {
     if (isTicTacToeRequest(request)) {
       return buildMicroStudioJavaScriptTicTacToeFallbackGameCode(plan, request);
     }
-    if (isPuzzleRequest(request)) {
-      return buildMicroStudioJavaScriptPuzzleFallbackGameCode(plan, request);
-    }
     if (isPuzzlePlatformerRequest(request)) {
       return buildMicroStudioJavaScriptPuzzlePlatformerFallbackGameCode(plan, request);
+    }
+    if (isPuzzleRequest(request)) {
+      return buildMicroStudioJavaScriptPuzzleFallbackGameCode(plan, request);
     }
     if (isRacingRequest(request)) {
       return buildMicroStudioJavaScriptRacingFallbackGameCode(plan, request);
@@ -3180,13 +3817,19 @@ function buildFallbackGameCode(plan, resolvedPhysics, language = "microScript", 
     if (isShooterRequest(request)) {
       return buildMicroStudioJavaScriptShooterFallbackGameCode(plan, request);
     }
+    if (hasSpecificFallbackIntent(request)) {
+      return buildMicroStudioJavaScriptIntentPrototypeFallbackGameCode(plan, request);
+    }
     return buildMicroStudioJavaScriptFallbackGameCode(plan, resolvedPhysics, request);
   }
-  if (isPuzzleRequest(request)) {
-    return buildMicroScriptPuzzleFallbackGameCode(plan, request);
+  if (isTicTacToeRequest(request)) {
+    return buildMicroScriptTicTacToeFallbackGameCode(plan, request);
   }
   if (isPuzzlePlatformerRequest(request)) {
     return buildMicroScriptPuzzlePlatformerFallbackGameCode(plan, request);
+  }
+  if (isPuzzleRequest(request)) {
+    return buildMicroScriptPuzzleFallbackGameCode(plan, request);
   }
   if (isRacingRequest(request)) {
     return buildMicroScriptRacingFallbackGameCode(plan, request);
@@ -3199,6 +3842,9 @@ function buildFallbackGameCode(plan, resolvedPhysics, language = "microScript", 
   }
   if (isShooterRequest(request)) {
     return buildMicroScriptShooterFallbackGameCode(plan, request);
+  }
+  if (hasSpecificFallbackIntent(request)) {
+    return buildMicroScriptIntentPrototypeFallbackGameCode(plan, request);
   }
   const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
   const description = JSON.stringify((plan.project && plan.project.description) || "");
@@ -3559,6 +4205,7 @@ function buildMicroStudioCorePromptRules() {
     "Treat the sprite editor and map editor as first-class parts of the workflow; use sprites for characters/UI art and maps for tile layouts or level structure whenever they improve the game.",
     "Prefer a compact, playable starter with a small state object, a few helper functions, and bounded arrays for enemies, bullets, coins, particles, or hazards.",
     "Keep init() for setup, update() for simulation and input, and draw() for rendering only.",
+    "The generated game must match the requested game type and core mechanic. Never substitute a requested board game, puzzle, racing game, shooter, platformer, or named game with an unrelated arcade collector.",
     "Use microStudio drawing calls for all output and keep the game readable on the built-in Play screen.",
     "Remove off-screen or spent objects promptly, and avoid unbounded spawning or large transient allocations."
   ].join(" ");
@@ -3591,8 +4238,11 @@ function buildMicroStudioJavaScriptSyntaxPromptRules() {
 }
 
 function buildMicroStudioGenrePromptRules(request) {
-  const text = `${request && request.idea ? request.idea : ""} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
+  const text = fallbackRequestText(request);
   const rules = [];
+  if (isTicTacToeRequest(request)) {
+    rules.push("For tic-tac-toe, implement an actual 3x3 turn-based board with X/O state, click handling, win detection across rows/columns/diagonals, draw detection, restart logic, and no falling-star or arcade-collector fallback.");
+  }
   if (isPuzzleRequest(request)) {
     rules.push("For a puzzle, use a compact board state, limited legal moves, clear win conditions, and mouse or touch interactions that fit tile swapping, matching, ordering, or path completion.");
   }
@@ -3616,6 +4266,9 @@ function buildMicroStudioGenrePromptRules(request) {
   }
   if (/sprite|tile|map|level|maze|platform/.test(text)) {
     rules.push("If the game benefits from authored content, lean on sprites and maps instead of hardcoding every visual element.");
+  }
+  if (hasSpecificFallbackIntent(request)) {
+    rules.push("Respect the requested genre and named mechanics exactly. If the request names a specific game type, do not output a generic falling-object, star-collector, or unrelated arcade loop.");
   }
   return rules.join(" ");
 }
@@ -4800,7 +5453,22 @@ class AiGameGeneratorService {
                 ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio shooter fallback was inserted."
               : "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. It used unsupported APIs such as line(), fillText(), strokeStyle, or onMouseDown(). The code was rejected and replaced with a safe microStudio-compatible fallback.");
       } else {
-        warnings.push(`Invalid microScript in ${sourcePath || config.modelSourcePath}; fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`);
+        const fallbackGenre = fallbackGenreName(request);
+        warnings.push(fallbackGenre === "ticTacToe"
+          ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript tic-tac-toe fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`
+          : fallbackGenre === "puzzlePlatformer"
+            ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript puzzle-platformer fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`
+          : fallbackGenre === "puzzle"
+            ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript puzzle fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`
+          : fallbackGenre === "racing"
+            ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript racing fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`
+          : fallbackGenre === "topDownAdventure"
+            ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript top-down adventure fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`
+          : fallbackGenre === "platformer"
+            ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript platformer fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`
+          : fallbackGenre === "shooter"
+            ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript shooter fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`
+          : `Invalid microScript in ${sourcePath || config.modelSourcePath}; fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`);
       }
       return buildFallbackGameCode({
         project: { title: this.fallbackTitle(request.idea), description: request.idea },
@@ -4808,8 +5476,22 @@ class AiGameGeneratorService {
         nextSteps: []
       }, resolvedPhysics, config.language, request);
     }
+    const intentValidation = validateGeneratedIntentForRequest(code, request, config.language);
+    if (!intentValidation.ok) {
+      const fallbackGenre = fallbackGenreName(request);
+      warnings.push(`Generated ${config.language} code did not match the requested game intent in ${sourcePath || config.modelSourcePath}; safe ${fallbackGenre || "generic"} fallback inserted. Problems: ${intentValidation.errors.slice(0, 5).join(", ")}`);
+      return buildFallbackGameCode({
+        project: { title: this.fallbackTitle(request.idea), description: request.idea },
+        gameDesign: this.validateGameDesign({}, request),
+        nextSteps: []
+      }, resolvedPhysics, config.language, request);
+    }
+
     if (config.language === "microScript" && !hasCoreFunctions(code)) {
-      warnings.push(`Missing microScript init/update/draw callbacks in ${sourcePath || config.modelSourcePath}; fallback starter inserted.`);
+      const fallbackGenre = fallbackGenreName(request);
+      warnings.push(fallbackGenre
+        ? `Missing microScript init/update/draw callbacks in ${sourcePath || config.modelSourcePath}; safe ${fallbackGenre} fallback inserted.`
+        : `Missing microScript init/update/draw callbacks in ${sourcePath || config.modelSourcePath}; fallback starter inserted.`);
       return buildFallbackGameCode({
         project: { title: this.fallbackTitle(request.idea), description: request.idea },
         gameDesign: this.validateGameDesign({}, request),
@@ -5575,6 +6257,10 @@ module.exports = {
   validateMicroStudioJavaScriptCode,
   validateJavaScriptCode,
   validateMicroStudioRuntimeApiUsage,
+  buildMicroStudioJavaScriptIntentPrototypeFallbackGameCode,
+  buildMicroScriptIntentPrototypeFallbackGameCode,
+  validateGeneratedIntentForRequest,
+  fallbackGenreName,
   buildMicroStudioJavaScriptTicTacToeFallbackGameCode,
   buildMicroStudioJavaScriptPuzzleFallbackGameCode,
   buildMicroStudioJavaScriptPuzzlePlatformerFallbackGameCode,
