@@ -8,7 +8,7 @@ const {
   ComfyUIProvider
 } = require("./image_providers.js");
 
-const ALLOWED_ROOTS = new Set(["source", "sprites", "maps", "assets", "sounds", "music", "doc", "backgrounds", "ui"]);
+const ALLOWED_ROOTS = new Set(["source", "js", "ms", "sprites", "maps", "assets", "sounds", "music", "doc", "backgrounds", "ui"]);
 const ALLOWED_EXTENSIONS = new Set(["js", "ms", "json", "md", "txt"]);
 const ALLOWED_IMAGE_EXTENSIONS = new Set(["png", "webp"]);
 const ALLOWED_IMAGE_PROVIDERS = new Set(["openai", "comfyui", "placeholder"]);
@@ -49,6 +49,89 @@ const MICROSTUDIO_API_GLOBALS = new Set([
   "asset_manager", "Matter", "init", "update", "draw"
 ]);
 
+const FORBIDDEN_GENERIC_BROWSER_GAME_PATTERNS = [
+  {
+    pattern: /(^|[^\w.])line\s*\(/,
+    message: "Use screen.drawLine(...), not line(...)."
+  },
+  {
+    pattern: /\bscreen\.line\s*\(/,
+    message: "Use screen.drawLine(...), not screen.line(...)."
+  },
+  {
+    pattern: /(^|[^\w.])circle\s*\(/,
+    message: "Use screen.drawRound(...) or screen.fillRound(...), not circle(...)."
+  },
+  {
+    pattern: /\bscreen\.(?:draw|fill)Circle\s*\(/,
+    message: "Use screen.drawRound(...) or screen.fillRound(...), not circle helpers."
+  },
+  {
+    pattern: /(^|[^\w.])rect\s*\(/,
+    message: "Use screen.drawRect(...) or screen.fillRect(...), not rect(...)."
+  },
+  {
+    pattern: /\bfillText\s*\(/,
+    message: "Use screen.drawText(...), not fillText(...)."
+  },
+  {
+    pattern: /\bstrokeText\s*\(/,
+    message: "Use screen.drawText(...), not strokeText(...)."
+  },
+  {
+    pattern: /\bstrokeStyle\s*=/,
+    message: "Use color arguments on screen drawing functions, not strokeStyle."
+  },
+  {
+    pattern: /\bfillStyle\s*=/,
+    message: "Use color arguments on screen drawing functions, not fillStyle."
+  },
+  {
+    pattern: /\blineWidth\s*=/,
+    message: "Do not rely on canvas lineWidth in microStudio generated code."
+  },
+  {
+    pattern: /\bfont\s*=/,
+    message: "Use the size argument in screen.drawText(...), not font."
+  },
+  {
+    pattern: /\btextAlign\s*=/,
+    message: "Do not use canvas textAlign; position text with screen.drawText coordinates."
+  },
+  {
+    pattern: /\bcanvas\b/,
+    message: "Do not use browser canvas in microStudio generated code."
+  },
+  {
+    pattern: /\bctx\b|\bcontext\b/,
+    message: "Do not use canvas ctx/context in microStudio generated code."
+  },
+  {
+    pattern: /\bdocument\./,
+    message: "Do not use DOM document in microStudio generated code."
+  },
+  {
+    pattern: /\bwindow\./,
+    message: "Do not use browser window in microStudio generated code."
+  },
+  {
+    pattern: /\baddEventListener\s*\(/,
+    message: "Do not use browser events; read mouse/touch/keyboard in update()."
+  },
+  {
+    pattern: /\bonMouseDown\b/,
+    message: "Do not define onMouseDown; read mouse state in update()."
+  },
+  {
+    pattern: /\bonMouseUp\b/,
+    message: "Do not define onMouseUp; read mouse state in update()."
+  },
+  {
+    pattern: /\bonClick\b/,
+    message: "Do not define onClick; read mouse state in update()."
+  }
+];
+
 const MICRO_SCRIPT_FORBIDDEN_SYNTAX_PATTERNS = [
   { pattern: /\bfunction\s+[a-zA-Z_$][\w$]*\s*\(/, reason: "JavaScript function declaration" },
   { pattern: /(^|[^\w])(?:let|const|var)\s+[a-zA-Z_$]/, reason: "JavaScript variable declaration" },
@@ -63,6 +146,19 @@ const MICRO_SCRIPT_FORBIDDEN_SYNTAX_PATTERNS = [
   { pattern: /\bscreen\.(?:fill|stroke|text|line)\s*\(/, reason: "JavaScript-style drawing API" },
   { pattern: /\b(onMouseDown|onMouseUp|onKeyDown|addEventListener)\s*\(/, reason: "JavaScript event handler" }
 ];
+
+function validateMicroStudioRuntimeApiUsage(code) {
+  const errors = [];
+  for (const rule of FORBIDDEN_GENERIC_BROWSER_GAME_PATTERNS) {
+    if (rule.pattern.test(code)) {
+      errors.push(rule.message);
+    }
+  }
+  return {
+    ok: errors.length === 0,
+    errors
+  };
+}
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -223,31 +319,58 @@ function normalizeImageFilename(asset, type, index) {
   return `${root}/${id}.png`;
 }
 
-function normalizeReferencePath(path, sourceRoot = "ms", sourceExt = "ms") {
+function mainPathForLanguage(language) {
+  const config = gameLanguageConfig(language);
+  return `${config.sourceRoot}/main.${config.sourceExt}`;
+}
+
+function normalizeSourcePathForLanguage(path, language) {
+  const config = gameLanguageConfig(language);
   const cleaned = String(path || "")
     .replace(/\\/g, "/")
     .trim();
-  if (!cleaned) {
-    return `${sourceRoot}/main.${sourceExt}`;
+  const basename = cleaned
+    .replace(/^source\//, "")
+    .replace(/^ms\//, "")
+    .replace(/^js\//, "")
+    .replace(/\.[^.]+$/, "") || "main";
+  const safeName = sanitizeSegment(basename);
+  return `${config.sourceRoot}/${safeName}.${config.sourceExt}`;
+}
+
+function normalizeReferencePath(path, root, ext) {
+  const cleanedRoot = String(root || "source")
+    .replace(/\\/g, "/")
+    .trim() || "source";
+  const cleanedExt = String(ext || "").replace(/^\./, "").toLowerCase();
+  const cleaned = String(path || "")
+    .replace(/\\/g, "/")
+    .trim();
+  const basename = cleaned
+    .replace(new RegExp(`^${cleanedRoot}/`), "")
+    .replace(/^source\//, "")
+    .replace(/^ms\//, "")
+    .replace(/^js\//, "")
+    .replace(/\.[^.]+$/, "") || "main";
+  const safeName = sanitizeSegment(basename);
+  if (!safeName || !cleanedExt || !ALLOWED_EXTENSIONS.has(cleanedExt)) {
+    return null;
   }
-  if (cleaned.startsWith("source/")) {
-    return cleaned.replace(/^source\//, `${sourceRoot}/`).replace(/\.js$/i, `.${sourceExt}`);
-  }
-  if (cleaned.startsWith("ms/") || cleaned.startsWith("js/")) {
-    return cleaned;
-  }
-  if (cleaned.startsWith("doc/")) {
-    return cleaned;
-  }
-  return cleaned;
+  return `${cleanedRoot}/${safeName}.${cleanedExt}`;
 }
 
 function validateGeneratedCodeForLanguage(code, language) {
-  const config = gameLanguageConfig(language);
-  if (config.language === "JavaScript") {
-    return validateJavaScriptCode(code);
+  const normalized = normalizeGameLanguage(language);
+  if (normalized === "microScript") {
+    return validateMicroScriptCode(code);
   }
-  return validateMicroScriptCode(code);
+  if (normalized === "microStudioJavaScript") {
+    return validateMicroStudioJavaScriptCode(code);
+  }
+  return {
+    ok: false,
+    errors: [`Unsupported language: ${language}`]
+  };
 }
 
 function validateMicroScriptCode(code) {
@@ -271,6 +394,9 @@ function validateMicroScriptCode(code) {
       errors.push(rule.message);
     }
   }
+
+  const runtimeResult = validateMicroStudioRuntimeApiUsage(code);
+  errors.push(...runtimeResult.errors);
 
   if (!/\binit\s*=\s*function\s*\(/.test(code)) {
     errors.push("Missing microScript lifecycle callback: init = function().");
@@ -308,7 +434,7 @@ function validateMicroScriptCode(code) {
   };
 }
 
-function validateJavaScriptCode(code) {
+function validateMicroStudioJavaScriptCode(code) {
   const errors = [];
   const rules = [
     { pattern: /\binit\s*=\s*function\s*\(/, message: "microScript lifecycle syntax found in JavaScript output." },
@@ -330,20 +456,27 @@ function validateJavaScriptCode(code) {
     }
   }
 
+  const runtimeResult = validateMicroStudioRuntimeApiUsage(code);
+  errors.push(...runtimeResult.errors);
+
   if (!/\bfunction\s+init\s*\(/.test(code)) {
-    errors.push("Missing JavaScript lifecycle callback: function init().");
+    errors.push("Missing microStudio JavaScript lifecycle callback: function init().");
   }
   if (!/\bfunction\s+update\s*\(/.test(code)) {
-    errors.push("Missing JavaScript lifecycle callback: function update().");
+    errors.push("Missing microStudio JavaScript lifecycle callback: function update().");
   }
   if (!/\bfunction\s+draw\s*\(/.test(code)) {
-    errors.push("Missing JavaScript lifecycle callback: function draw().");
+    errors.push("Missing microStudio JavaScript lifecycle callback: function draw().");
   }
 
   return {
     ok: errors.length === 0,
     errors
   };
+}
+
+function validateJavaScriptCode(code) {
+  return validateMicroStudioJavaScriptCode(code);
 }
 
 function imagePromptPrefix(request) {
@@ -382,22 +515,22 @@ function normalizeGameLanguage(value) {
   if (raw === "microscript" || raw === "micro-script" || raw === "ms") {
     return "microScript";
   }
-  if (raw === "javascript" || raw === "java-script" || raw === "js") {
-    return "JavaScript";
+  if (raw === "javascript" || raw === "java-script" || raw === "js" || raw === "microstudio-javascript" || raw === "microstudiojavascript") {
+    return "microStudioJavaScript";
   }
   return "microScript";
 }
 
 function gameLanguageConfig(language) {
   const normalized = normalizeGameLanguage(language);
-  if (normalized === "JavaScript") {
+  if (normalized === "microStudioJavaScript") {
     return {
-      language: "JavaScript",
+      language: "microStudioJavaScript",
       projectLanguage: "javascript",
       sourceRoot: "js",
       sourceExt: "js",
-      modelSourcePath: "source/main.js",
-      featureName: "game-generator-javascript"
+      modelSourcePath: "js/main.js",
+      featureName: "game-generator-microstudio-javascript"
     };
   }
   return {
@@ -405,7 +538,7 @@ function gameLanguageConfig(language) {
     projectLanguage: "microscript_v2",
     sourceRoot: "ms",
     sourceExt: "ms",
-    modelSourcePath: "source/main.js",
+    modelSourcePath: "ms/main.ms",
     featureName: "game-generator-microscript"
   };
 }
@@ -556,7 +689,7 @@ function buildFallbackDoc(plan, generatedFiles) {
 
 function buildGeneratedAssetManifest(imageAssets, language = "microScript") {
   const config = gameLanguageConfig(language);
-  if (config.language === "JavaScript") {
+  if (config.language === "microStudioJavaScript") {
     const lines = [
       "// Generated image asset manifest.",
       "// Reference these paths from your game code.",
@@ -621,8 +754,8 @@ function buildGeneratedAssetManifestFile(normalized, request) {
 
 function buildFallbackGameCode(plan, resolvedPhysics, language = "microScript") {
   const config = gameLanguageConfig(language);
-  if (config.language === "JavaScript") {
-    return buildJavaScriptFallbackGameCode(plan, resolvedPhysics);
+  if (config.language === "microStudioJavaScript") {
+    return buildMicroStudioJavaScriptFallbackGameCode(plan, resolvedPhysics);
   }
   const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
   const description = JSON.stringify((plan.project && plan.project.description) || "");
@@ -696,7 +829,7 @@ end
 
 drawBody = function(body, color)
   if body.circleRadius then
-    screen.fillCircle(body.position.x, body.position.y, body.circleRadius, color)
+    screen.fillRound(body.position.x, body.position.y, body.circleRadius, body.circleRadius, color)
   else
     bounds = body.bounds
     screen.fillRect(body.position.x, body.position.y, bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y, color)
@@ -903,12 +1036,12 @@ draw = function()
   screen.drawText("Score: " + game.score + "  Lives: " + game.lives, 0, -78, 5, "#cbd5e1")
   screen.drawText(controlsText, 0, 92, 5, "#cbd5e1")
 
-  screen.fillCircle(game.player.x, game.player.y, game.player.size, "#38bdf8")
-  screen.drawCircle(game.player.x, game.player.y, game.player.size + 1, "#0ea5e9")
+  screen.fillRound(game.player.x, game.player.y, game.player.size, game.player.size, "#38bdf8")
+  screen.drawRound(game.player.x, game.player.y, game.player.size + 1, game.player.size + 1, "#0ea5e9")
 
   for i = 0 to game.stars.length - 1
     star = game.stars[i]
-    screen.fillCircle(star.x, star.y, star.size, "#fbbf24")
+    screen.fillRound(star.x, star.y, star.size, star.size, "#fbbf24")
   end
 
   if game.gameOver then
@@ -927,6 +1060,7 @@ function buildGameProjectSchema(language, request, resolvedPhysics) {
       slug: "string",
       description: "string",
       language: config.language,
+      runtime: "microStudio",
       graphics: "basic",
       libraries: resolvedPhysics ? ["matter.js"] : [],
       aspectRatio: request.aspectRatio,
@@ -949,9 +1083,9 @@ function buildGameProjectSchema(language, request, resolvedPhysics) {
     },
     files: [
       {
-        path: "source/main.js",
+        path: mainPathForLanguage(config.language),
         type: "code",
-        content: config.language === "JavaScript" ? "JavaScript source code only" : "microScript source code only"
+        content: config.language === "microStudioJavaScript" ? "microStudioJavaScript source code only" : "microScript source code only"
       },
       {
         path: "doc/README.md",
@@ -976,23 +1110,24 @@ function buildMicroScriptSystemPrompt(request, resolvedPhysics) {
     "Required lifecycle callbacks: init = function(), update = function(), draw = function().",
     "Do not generate JavaScript syntax, and do not mix languages.",
     resolvedPhysics ? "Matter.js is enabled; create and clear the engine safely and keep body counts bounded." : "Do not use Matter.js unless the game concept explicitly needs rigid-body physics.",
-    "Use source/main.js in the JSON schema, and keep the generated code free of browser/network/DOM APIs.",
+    `Use ${mainPathForLanguage("microScript")} in the JSON schema, and keep the generated code free of browser/network/DOM APIs.`,
     "Use microScript operators and syntax only: object/end, if/then/else/elsif, and/or/not, ==/!=, floor(), random.next().",
     "Keep update() lightweight and bounded. Remove off-screen objects. Avoid large allocations in draw()."
   ].join(" ");
 }
 
-function buildJavaScriptSystemPrompt(request, resolvedPhysics) {
+function buildMicroStudioJavaScriptSystemPrompt(request, resolvedPhysics) {
   return [
     "You are an expert microStudio JavaScript game developer.",
-    "Generate a complete, playable starter 2D browser game project using JavaScript only.",
+    "Generate a complete, playable starter 2D browser game project using microStudio JavaScript only.",
     "Return only valid JSON. Do not use markdown or code fences.",
-    "Every source file must use JavaScript syntax only.",
+    "Every source file must use microStudio JavaScript syntax only.",
     "Required lifecycle callbacks: function init(), function update(), function draw().",
     "Do not generate microScript syntax, and do not mix languages.",
+    "Do not use browser or canvas APIs such as line(), circle(), rect(), fillText(), strokeText(), strokeStyle, fillStyle, document, window, addEventListener, onMouseDown, onMouseUp, or onClick.",
     resolvedPhysics ? "Matter.js is enabled; create and clear the engine safely and keep body counts bounded." : "Do not use Matter.js unless the game concept explicitly needs rigid-body physics.",
-    "Use source/main.js in the JSON schema, and keep the generated code free of browser/network/DOM APIs.",
-    "Use JavaScript syntax only: function declarations, braces, semicolons, const/let, Math.*, ===/!==, &&/||, and !.",
+    `Use ${mainPathForLanguage("microStudioJavaScript")} in the JSON schema, and keep the generated code free of browser/network/DOM APIs.`,
+    "Use microStudio JavaScript syntax only: function declarations, braces, semicolons, const/let, Math.*, ===/!==, &&/||, and !.",
     "Keep update() lightweight and bounded. Remove off-screen objects. Avoid large allocations in draw()."
   ].join(" ");
 }
@@ -1012,22 +1147,22 @@ function buildMicroScriptUserPrompt(request, resolvedPhysics) {
   ].join("\n");
 }
 
-function buildJavaScriptUserPrompt(request, resolvedPhysics) {
+function buildMicroStudioJavaScriptUserPrompt(request, resolvedPhysics) {
   return [
     "Generate a microStudio JavaScript game project.",
     `Idea: ${request.idea}`,
-    "Language: JavaScript",
+    "Language: microStudioJavaScript",
     `Physics: ${request.physics}`,
     `Resolved physics: ${resolvedPhysics ? "matterjs" : "manual"}`,
     `Difficulty: ${request.difficulty}`,
     `Aspect ratio: ${request.aspectRatio}`,
     `Generate images: ${request.generateImages}`,
     "Return only JSON in this exact shape:",
-    JSON.stringify(buildGameProjectSchema("JavaScript", request, resolvedPhysics), null, 2)
+    JSON.stringify(buildGameProjectSchema("microStudioJavaScript", request, resolvedPhysics), null, 2)
   ].join("\n");
 }
 
-function buildJavaScriptFallbackGameCode(plan, resolvedPhysics) {
+function buildMicroStudioJavaScriptFallbackGameCode(plan, resolvedPhysics) {
   const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
   const description = JSON.stringify((plan.project && plan.project.description) || "");
   const controlText = JSON.stringify((plan.gameDesign && Array.isArray(plan.gameDesign.controls) && plan.gameDesign.controls.length > 0)
@@ -1036,7 +1171,7 @@ function buildJavaScriptFallbackGameCode(plan, resolvedPhysics) {
   if (resolvedPhysics === "matterjs") {
     return `// ${title}
 // ${description}
-// Safe JavaScript Matter.js starter. Keep body counts bounded for performance.
+// Safe microStudio JavaScript Matter.js starter. Keep body counts bounded for performance.
 
 const game = {
   engine: null,
@@ -1089,7 +1224,7 @@ function drawBody(body, color) {
     return;
   }
   if (body.circleRadius) {
-    screen.fillCircle(body.position.x, body.position.y, body.circleRadius, color);
+    screen.fillRound(body.position.x, body.position.y, body.circleRadius, body.circleRadius, color);
   } else if (body.bounds) {
     const bounds = body.bounds;
     screen.fillRect(body.position.x, body.position.y, bounds.max.x - bounds.min.x, bounds.max.y - bounds.min.y, color);
@@ -1147,7 +1282,7 @@ function draw() {
 
   return `// ${title}
 // ${description}
-// Safe JavaScript arcade starter. Keep active objects bounded for performance.
+// Safe microStudio JavaScript arcade starter. Keep active objects bounded for performance.
 
 const game = {
   player: {
@@ -1270,12 +1405,12 @@ function draw() {
   screen.drawText("Score: " + game.score + "  Lives: " + game.lives, 0, -78, 5, "#cbd5e1");
   screen.drawText(controlsText, 0, 92, 5, "#cbd5e1");
 
-  screen.fillCircle(game.player.x, game.player.y, game.player.size, "#38bdf8");
-  screen.drawCircle(game.player.x, game.player.y, game.player.size + 1, "#0ea5e9");
+  screen.fillRound(game.player.x, game.player.y, game.player.size, game.player.size, "#38bdf8");
+  screen.drawRound(game.player.x, game.player.y, game.player.size + 1, game.player.size + 1, "#0ea5e9");
 
   for (let i = 0; i < game.stars.length; i += 1) {
     const star = game.stars[i];
-    screen.fillCircle(star.x, star.y, star.size, "#fbbf24");
+    screen.fillRound(star.x, star.y, star.size, star.size, "#fbbf24");
   }
 
   if (game.gameOver) {
@@ -1397,8 +1532,8 @@ class AiGameGeneratorService {
 
   async generateGameProject(input, user) {
     const request = this.validateRequest(input);
-    if (request.language === "JavaScript") {
-      return this.generateJavaScriptGameProject(request, user);
+    if (request.language === "microStudioJavaScript") {
+      return this.generateMicroStudioJavaScriptGameProject(request, user);
     }
     return this.generateMicroScriptGameProject(request, user);
   }
@@ -1407,17 +1542,21 @@ class AiGameGeneratorService {
     return this.generateGameProjectForLanguage(request, user, gameLanguageConfig("microScript"));
   }
 
+  async generateMicroStudioJavaScriptGameProject(request, user) {
+    return this.generateGameProjectForLanguage(request, user, gameLanguageConfig("microStudioJavaScript"));
+  }
+
   async generateJavaScriptGameProject(request, user) {
-    return this.generateGameProjectForLanguage(request, user, gameLanguageConfig("JavaScript"));
+    return this.generateMicroStudioJavaScriptGameProject(request, user);
   }
 
   async generateGameProjectForLanguage(request, user, config) {
     const resolvedPhysics = shouldUseMatter(request);
-    const systemPrompt = config.language === "JavaScript"
-      ? buildJavaScriptSystemPrompt(request, resolvedPhysics)
+    const systemPrompt = config.language === "microStudioJavaScript"
+      ? buildMicroStudioJavaScriptSystemPrompt(request, resolvedPhysics)
       : buildMicroScriptSystemPrompt(request, resolvedPhysics);
-    const userPrompt = config.language === "JavaScript"
-      ? buildJavaScriptUserPrompt(request, resolvedPhysics)
+    const userPrompt = config.language === "microStudioJavaScript"
+      ? buildMicroStudioJavaScriptUserPrompt(request, resolvedPhysics)
       : buildMicroScriptUserPrompt(request, resolvedPhysics);
     const providerResult = await this.gateway.generate({
       feature: config.featureName,
@@ -1644,12 +1783,8 @@ class AiGameGeneratorService {
       const root = parts[0];
       const ext = String(parts[parts.length - 1].split(".").pop() || "").toLowerCase();
       const rawName = parts.slice(1).join("/").replace(/\.[^.]+$/, "");
-      if (root === "source") {
-        if (ext !== "js") {
-          warnings.push(`Rejected source file with unsupported extension: ${file.path}`);
-          continue;
-        }
-        const normalizedPath = normalizeFinalPath(languageConfig.sourceRoot, rawName, languageConfig.sourceExt);
+      if (root === "source" || root === languageConfig.sourceRoot) {
+        const normalizedPath = normalizeSourcePathForLanguage(`${root}/${rawName}.${ext}`, languageConfig.language);
         if (!normalizedPath) {
           warnings.push(`Rejected source file with empty or invalid name: ${file.path}`);
           continue;
@@ -1797,13 +1932,14 @@ class AiGameGeneratorService {
 
   buildFallbackImageAssets(request, title, slug, languageConfig = null) {
     const config = languageConfig || gameLanguageConfig(request.language);
+    const sourcePath = mainPathForLanguage(config.language);
     return [
-      this.buildDefaultImageAsset("player_idle", "sprite", "source/main.js", request, title, slug, "A readable game-ready player character sprite", config),
-      this.buildDefaultImageAsset("enemy_basic", "sprite", "source/main.js", request, title, slug, "A simple enemy sprite with a distinct silhouette", config),
-      this.buildDefaultImageAsset("collectible_star", "sprite", "source/main.js", request, title, slug, "A small collectible object sprite with a readable silhouette", config),
-      this.buildDefaultImageAsset("background_level_1", "background", "source/main.js", request, title, slug, "A simple colorful game background with a clean silhouette", config),
-      this.buildDefaultImageAsset("ui_start_button", "ui", "source/main.js", request, title, slug, "A simple UI start button with a clean game interface look", config),
-      this.buildDefaultImageAsset("game_icon", "ui", "source/main.js", request, title, slug, "A clean game icon or thumbnail with a bold silhouette", config)
+      this.buildDefaultImageAsset("player_idle", "sprite", sourcePath, request, title, slug, "A readable game-ready player character sprite", config),
+      this.buildDefaultImageAsset("enemy_basic", "sprite", sourcePath, request, title, slug, "A simple enemy sprite with a distinct silhouette", config),
+      this.buildDefaultImageAsset("collectible_star", "sprite", sourcePath, request, title, slug, "A small collectible object sprite with a readable silhouette", config),
+      this.buildDefaultImageAsset("background_level_1", "background", sourcePath, request, title, slug, "A simple colorful game background with a clean silhouette", config),
+      this.buildDefaultImageAsset("ui_start_button", "ui", sourcePath, request, title, slug, "A simple UI start button with a clean game interface look", config),
+      this.buildDefaultImageAsset("game_icon", "ui", sourcePath, request, title, slug, "A clean game icon or thumbnail with a bold silhouette", config)
     ];
   }
 
@@ -1935,8 +2071,11 @@ class AiGameGeneratorService {
     }
     const validation = validateGeneratedCodeForLanguage(code, config.language);
     if (!validation.ok) {
-      const label = config.language === "JavaScript" ? "JavaScript" : "microScript";
-      warnings.push(`Invalid ${label} in ${sourcePath || config.modelSourcePath}; fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`);
+      if (config.language === "microStudioJavaScript") {
+        warnings.push("The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. It used unsupported APIs such as line(), fillText(), strokeStyle, or onMouseDown(). The code was rejected and replaced with a safe microStudio-compatible fallback.");
+      } else {
+        warnings.push(`Invalid microScript in ${sourcePath || config.modelSourcePath}; fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`);
+      }
       return buildFallbackGameCode({
         project: { title: this.fallbackTitle(request.idea), description: request.idea },
         gameDesign: this.validateGameDesign({}, request),
@@ -2702,9 +2841,13 @@ module.exports = {
   shouldUseMatter,
   normalizeGameLanguage,
   normalizeAspectRatio,
+  mainPathForLanguage,
+  normalizeSourcePathForLanguage,
   slugify,
   validateGeneratedCodeForLanguage,
   validateMicroScriptCode,
+  validateMicroStudioJavaScriptCode,
   validateJavaScriptCode,
+  validateMicroStudioRuntimeApiUsage,
   gameLanguageConfig
 };

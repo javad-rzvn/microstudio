@@ -246,6 +246,8 @@ class App
   queueMainSourceAutoOpen:(project=@project)->
     return if not project?
     app = @
+    if project.getSource("main")?
+      app.editor.setSelectedItem "main"
     listener = null
     listener =
       projectUpdate:(change)->
