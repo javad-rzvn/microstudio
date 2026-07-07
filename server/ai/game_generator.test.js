@@ -9,8 +9,10 @@ const {
   validateMicroStudioRuntimeApiUsage,
   validateMicroScriptCode,
   buildMicroStudioJavaScriptTicTacToeFallbackGameCode,
+  buildMicroStudioJavaScriptPuzzleFallbackGameCode,
   buildMicroStudioJavaScriptPlatformerFallbackGameCode,
   buildMicroStudioJavaScriptShooterFallbackGameCode,
+  buildMicroScriptPuzzleFallbackGameCode,
   buildMicroScriptPlatformerFallbackGameCode,
   buildMicroScriptShooterFallbackGameCode
 } = require("./game_generator.js");
@@ -88,6 +90,26 @@ test("builds a valid tic-tac-toe microStudio JavaScript fallback", () => {
   assert.ok(code.includes("function update()"));
 });
 
+test("builds a valid puzzle microStudio JavaScript fallback", () => {
+  const code = buildMicroStudioJavaScriptPuzzleFallbackGameCode(
+    {
+      project: {
+        title: "Tile Order",
+        description: "A small sliding puzzle."
+      }
+    },
+    {
+      idea: "build a puzzle with sliding tiles"
+    }
+  );
+
+  const validation = validateMicroStudioJavaScriptCode(code);
+  assert.equal(validation.ok, true, validation.errors.join("\n"));
+  assert.ok(code.includes("blankIndex"));
+  assert.ok(code.includes("function update()"));
+  assert.ok(code.includes("screen.drawLine"));
+});
+
 test("builds a valid platformer microStudio JavaScript fallback", () => {
   const code = buildMicroStudioJavaScriptPlatformerFallbackGameCode(
     {
@@ -129,6 +151,18 @@ test("builds a valid shooter microStudio JavaScript fallback", () => {
 });
 
 test("builds valid microScript genre fallbacks", () => {
+  const puzzleCode = buildMicroScriptPuzzleFallbackGameCode(
+    {
+      project: {
+        title: "Tile Order",
+        description: "A small sliding puzzle."
+      }
+    },
+    {
+      idea: "build a puzzle with sliding tiles"
+    }
+  );
+
   const platformerCode = buildMicroScriptPlatformerFallbackGameCode(
     {
       project: {
@@ -153,11 +187,15 @@ test("builds valid microScript genre fallbacks", () => {
     }
   );
 
+  const puzzleValidation = validateMicroScriptCode(puzzleCode);
   const platformerValidation = validateMicroScriptCode(platformerCode);
   const shooterValidation = validateMicroScriptCode(shooterCode);
 
+  assert.equal(puzzleValidation.ok, true, puzzleValidation.errors.join("\n"));
   assert.equal(platformerValidation.ok, true, platformerValidation.errors.join("\n"));
   assert.equal(shooterValidation.ok, true, shooterValidation.errors.join("\n"));
+  assert.ok(puzzleCode.includes("blankIndex"));
+  assert.ok(puzzleCode.includes("screen.drawLine"));
   assert.ok(platformerCode.includes("Collect the coins"));
   assert.ok(platformerCode.includes("screen.fillRect"));
   assert.ok(shooterCode.includes("spawnEnemy"));

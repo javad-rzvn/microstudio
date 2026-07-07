@@ -771,6 +771,11 @@ function isShooterRequest(request) {
   return /shooter|shoot[-\s]?em[-\s]?up|shmup|bullet[-\s]?hell|space[-\s]?shooter|top[-\s]?down[-\s]?shooter|arena[-\s]?shooter|arcade[-\s]?shooter|blaster/.test(text);
 }
 
+function isPuzzleRequest(request) {
+  const text = `${request && request.idea ? request.idea : ""} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
+  return /puzzle|logic|brain|matching|match[-\s]?3|slide|sliding|swap|tile|sokoban|maze|memory|jigsaw|word[-\s]?game|brain[-\s]?teaser/.test(text);
+}
+
 function fallbackGenreName(request) {
   if (isTicTacToeRequest(request)) {
     return "ticTacToe";
@@ -781,7 +786,178 @@ function fallbackGenreName(request) {
   if (isShooterRequest(request)) {
     return "shooter";
   }
+  if (isPuzzleRequest(request)) {
+    return "puzzle";
+  }
   return null;
+}
+
+function buildMicroStudioJavaScriptPuzzleFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
+  const description = JSON.stringify((plan.project && plan.project.description) || "");
+  const controlsText = JSON.stringify("Click a tile | R to reset");
+  return `// ${title}
+// ${description}
+// Safe microStudio JavaScript puzzle starter.
+
+const game = {
+  tiles: [],
+  blankIndex: 8,
+  boardLeft: -54,
+  boardTop: -54,
+  tileSize: 36,
+  prevMousePressed: false,
+  moves: 0,
+  solved: false,
+  message: "Move tiles into the gap."
+};
+
+const titleText = ${title};
+const controlsText = ${controlsText};
+
+function createSolvedTiles() {
+  return [1, 2, 3, 4, 5, 6, 7, 8, 0];
+}
+
+function resetGame() {
+  game.tiles = createSolvedTiles();
+  game.blankIndex = 8;
+  game.moves = 0;
+  game.solved = false;
+  game.message = "Move tiles into the gap.";
+
+  for (let step = 0; step < 32; step += 1) {
+    const neighbors = getMovableIndices(game.blankIndex);
+    const pick = neighbors[Math.floor(random.next() * neighbors.length)];
+    swapTiles(game.blankIndex, pick);
+    game.blankIndex = pick;
+  }
+  game.moves = 0;
+  game.solved = false;
+}
+
+function swapTiles(a, b) {
+  const temp = game.tiles[a];
+  game.tiles[a] = game.tiles[b];
+  game.tiles[b] = temp;
+}
+
+function getMovableIndices(blankIndex) {
+  const row = Math.floor(blankIndex / 3);
+  const col = blankIndex % 3;
+  const choices = [];
+  if (row > 0) choices.push(blankIndex - 3);
+  if (row < 2) choices.push(blankIndex + 3);
+  if (col > 0) choices.push(blankIndex - 1);
+  if (col < 2) choices.push(blankIndex + 1);
+  return choices;
+}
+
+function isNeighbor(indexA, indexB) {
+  const rowA = Math.floor(indexA / 3);
+  const colA = indexA % 3;
+  const rowB = Math.floor(indexB / 3);
+  const colB = indexB % 3;
+  return Math.abs(rowA - rowB) + Math.abs(colA - colB) === 1;
+}
+
+function isSolved() {
+  for (let i = 0; i < 8; i += 1) {
+    if (game.tiles[i] !== i + 1) {
+      return false;
+    }
+  }
+  return game.tiles[8] === 0;
+}
+
+function tryMoveAt(x, y) {
+  const boardX = game.boardLeft;
+  const boardY = game.boardTop;
+  const size = game.tileSize * 3;
+  if (x < boardX || y < boardY || x >= boardX + size || y >= boardY + size) {
+    return;
+  }
+
+  const col = Math.floor((x - boardX) / game.tileSize);
+  const row = Math.floor((y - boardY) / game.tileSize);
+  const index = row * 3 + col;
+  if (game.tiles[index] === 0) {
+    return;
+  }
+  if (!isNeighbor(index, game.blankIndex)) {
+    return;
+  }
+
+  swapTiles(index, game.blankIndex);
+  game.blankIndex = index;
+  game.moves += 1;
+  game.solved = isSolved();
+  if (game.solved) {
+    game.message = "Puzzle solved.";
+  }
+}
+
+function init() {
+  resetGame();
+}
+
+function update() {
+  if (keyboard.press.KEY_R || keyboard.press.SPACE) {
+    resetGame();
+    return;
+  }
+
+  if (mouse.pressed && !game.prevMousePressed && !game.solved) {
+    tryMoveAt(mouse.x, mouse.y);
+  }
+
+  game.prevMousePressed = mouse.pressed;
+}
+
+function draw() {
+  screen.fillRect(0, 0, screen.width, screen.height, "#08111f");
+  screen.drawText(titleText, 0, -92, 8, "#dbeafe");
+  screen.drawText(game.message, 0, 92, 5, "#cbd5e1");
+  screen.drawText("Moves: " + game.moves, 0, -78, 5, "#94a3b8");
+  screen.drawText(controlsText, 0, 78, 5, "#94a3b8");
+
+  const boardX = game.boardLeft;
+  const boardY = game.boardTop;
+  const boardSize = game.tileSize * 3;
+  const boardRight = boardX + boardSize;
+  const boardBottom = boardY + boardSize;
+
+  screen.drawLine(boardX, boardY, boardRight, boardY, "#475569");
+  screen.drawLine(boardX, boardBottom, boardRight, boardBottom, "#475569");
+  screen.drawLine(boardX, boardY, boardX, boardBottom, "#475569");
+  screen.drawLine(boardRight, boardY, boardRight, boardBottom, "#475569");
+
+  for (let i = 1; i < 3; i += 1) {
+    const x = boardX + i * game.tileSize;
+    const y = boardY + i * game.tileSize;
+    screen.drawLine(x, boardY, x, boardBottom, "#475569");
+    screen.drawLine(boardX, y, boardRight, y, "#475569");
+  }
+
+  for (let index = 0; index < game.tiles.length; index += 1) {
+    const value = game.tiles[index];
+    const col = index % 3;
+    const row = Math.floor(index / 3);
+    const cx = boardX + col * game.tileSize + game.tileSize / 2;
+    const cy = boardY + row * game.tileSize + game.tileSize / 2;
+    if (value === 0) {
+      screen.fillRect(cx, cy, game.tileSize - 4, game.tileSize - 4, "#0f172a");
+      continue;
+    }
+    screen.fillRound(cx, cy, game.tileSize - 4, game.tileSize - 4, "#1d4ed8");
+    screen.drawText(String(value), cx, cy, 14, "#f8fafc");
+  }
+
+  if (game.solved) {
+    screen.drawText("Solved", 0, -6, 10, "#86efac");
+  }
+}
+`;
 }
 
 function buildMicroStudioJavaScriptPlatformerFallbackGameCode(plan, request) {
@@ -1186,6 +1362,175 @@ function draw() {
     screen.drawText("Press Space or R to restart", 0, 10, 6, "#f8fafc");
   }
 }
+`;
+}
+
+function buildMicroScriptPuzzleFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
+  const description = JSON.stringify((plan.project && plan.project.description) || "");
+  const controlsText = JSON.stringify("Click a tile | R to reset");
+  return `// ${title}
+// ${description}
+// Safe microStudio microScript puzzle starter.
+
+game = object
+  tiles = []
+  blankIndex = 8
+  boardLeft = -54
+  boardTop = -54
+  tileSize = 36
+  prevMousePressed = false
+  moves = 0
+  solved = false
+  message = "Move tiles into the gap."
+end
+
+titleText = ${title}
+controlsText = ${controlsText}
+
+createSolvedTiles = function()
+  return [1, 2, 3, 4, 5, 6, 7, 8, 0]
+end
+
+swapTiles = function(a, b)
+  temp = game.tiles[a]
+  game.tiles[a] = game.tiles[b]
+  game.tiles[b] = temp
+end
+
+getMovableIndices = function(blankIndex)
+  row = floor(blankIndex / 3)
+  col = blankIndex % 3
+  choices = []
+  if row > 0 then choices.push(blankIndex - 3) end
+  if row < 2 then choices.push(blankIndex + 3) end
+  if col > 0 then choices.push(blankIndex - 1) end
+  if col < 2 then choices.push(blankIndex + 1) end
+  return choices
+end
+
+isNeighbor = function(indexA, indexB)
+  rowA = floor(indexA / 3)
+  colA = indexA % 3
+  rowB = floor(indexB / 3)
+  colB = indexB % 3
+  return abs(rowA - rowB) + abs(colA - colB) == 1
+end
+
+isSolved = function()
+  for i = 0 to 7
+    if game.tiles[i] != i + 1 then
+      return false
+    end
+  end
+  return game.tiles[8] == 0
+end
+
+resetGame = function()
+  game.tiles = createSolvedTiles()
+  game.blankIndex = 8
+  game.moves = 0
+  game.solved = false
+  game.message = "Move tiles into the gap."
+
+  for step = 0 to 31
+    neighbors = getMovableIndices(game.blankIndex)
+    pick = neighbors[random.nextInt(neighbors.length)]
+    swapTiles(game.blankIndex, pick)
+    game.blankIndex = pick
+  end
+
+  game.moves = 0
+  game.solved = false
+end
+
+tryMoveAt = function(x, y)
+  boardX = game.boardLeft
+  boardY = game.boardTop
+  size = game.tileSize * 3
+  if x < boardX or y < boardY or x >= boardX + size or y >= boardY + size then
+    return
+  end
+
+  col = floor((x - boardX) / game.tileSize)
+  row = floor((y - boardY) / game.tileSize)
+  index = row * 3 + col
+  if game.tiles[index] == 0 then
+    return
+  end
+  if not isNeighbor(index, game.blankIndex) then
+    return
+  end
+
+  swapTiles(index, game.blankIndex)
+  game.blankIndex = index
+  game.moves += 1
+  game.solved = isSolved()
+  if game.solved then
+    game.message = "Puzzle solved."
+  end
+end
+
+init = function()
+  resetGame()
+end
+
+update = function()
+  if keyboard.press.KEY_R or keyboard.press.SPACE then
+    resetGame()
+    return
+  end
+
+  if mouse.pressed and not game.prevMousePressed and not game.solved then
+    tryMoveAt(mouse.x, mouse.y)
+  end
+
+  game.prevMousePressed = mouse.pressed
+end
+
+draw = function()
+  screen.fillRect(0, 0, screen.width, screen.height, "#08111f")
+  screen.drawText(titleText, 0, -92, 8, "#dbeafe")
+  screen.drawText(game.message, 0, 92, 5, "#cbd5e1")
+  screen.drawText("Moves: " + game.moves, 0, -78, 5, "#94a3b8")
+  screen.drawText(controlsText, 0, 78, 5, "#94a3b8")
+
+  boardX = game.boardLeft
+  boardY = game.boardTop
+  boardSize = game.tileSize * 3
+  boardRight = boardX + boardSize
+  boardBottom = boardY + boardSize
+
+  screen.drawLine(boardX, boardY, boardRight, boardY, "#475569")
+  screen.drawLine(boardX, boardBottom, boardRight, boardBottom, "#475569")
+  screen.drawLine(boardX, boardY, boardX, boardBottom, "#475569")
+  screen.drawLine(boardRight, boardY, boardRight, boardBottom, "#475569")
+
+  for i = 1 to 2
+    x = boardX + i * game.tileSize
+    y = boardY + i * game.tileSize
+    screen.drawLine(x, boardY, x, boardBottom, "#475569")
+    screen.drawLine(boardX, y, boardRight, y, "#475569")
+  end
+
+  for index = 0 to game.tiles.length - 1
+    value = game.tiles[index]
+    col = index % 3
+    row = floor(index / 3)
+    cx = boardX + col * game.tileSize + game.tileSize / 2
+    cy = boardY + row * game.tileSize + game.tileSize / 2
+    if value == 0 then
+      screen.fillRect(cx, cy, game.tileSize - 4, game.tileSize - 4, "#0f172a")
+    else
+      screen.fillRound(cx, cy, game.tileSize - 4, game.tileSize - 4, "#1d4ed8")
+      screen.drawText(value, cx, cy, 14, "#f8fafc")
+    end
+  end
+
+  if game.solved then
+    screen.drawText("Solved", 0, -6, 10, "#86efac")
+  end
+end
 `;
 }
 
@@ -1610,6 +1955,9 @@ function buildFallbackGameCode(plan, resolvedPhysics, language = "microScript", 
     if (isTicTacToeRequest(request)) {
       return buildMicroStudioJavaScriptTicTacToeFallbackGameCode(plan, request);
     }
+    if (isPuzzleRequest(request)) {
+      return buildMicroStudioJavaScriptPuzzleFallbackGameCode(plan, request);
+    }
     if (isPlatformerRequest(request)) {
       return buildMicroStudioJavaScriptPlatformerFallbackGameCode(plan, request);
     }
@@ -1617,6 +1965,9 @@ function buildFallbackGameCode(plan, resolvedPhysics, language = "microScript", 
       return buildMicroStudioJavaScriptShooterFallbackGameCode(plan, request);
     }
     return buildMicroStudioJavaScriptFallbackGameCode(plan, resolvedPhysics, request);
+  }
+  if (isPuzzleRequest(request)) {
+    return buildMicroScriptPuzzleFallbackGameCode(plan, request);
   }
   if (isPlatformerRequest(request)) {
     return buildMicroScriptPlatformerFallbackGameCode(plan, request);
@@ -2017,6 +2368,9 @@ function buildMicroStudioJavaScriptSyntaxPromptRules() {
 function buildMicroStudioGenrePromptRules(request) {
   const text = `${request && request.idea ? request.idea : ""} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
   const rules = [];
+  if (isPuzzleRequest(request)) {
+    rules.push("For a puzzle, use a compact board state, limited legal moves, clear win conditions, and mouse or touch interactions that fit tile swapping, matching, ordering, or path completion.");
+  }
   if (isPlatformerRequest(request)) {
     rules.push("For a platformer, use gravity, a jump arc, simple collision against platforms, a bounded camera or fixed room, a goal, and a small number of collectibles or hazards.");
   }
@@ -2045,6 +2399,7 @@ function buildMicroScriptSystemPrompt(request, resolvedPhysics) {
     "Prefer microStudio drawing/input APIs such as screen.fillRect, screen.drawRect, screen.fillRound, screen.drawRound, screen.drawLine, screen.drawText, screen.drawSprite, screen.drawMap, keyboard.press.KEY_R, mouse.pressed, mouse.press, mouse.x, mouse.y, touch.press, touch.touching, and gamepad when appropriate.",
     buildMicroStudioInputPromptRules(),
     buildMicroStudioGenrePromptRules(request),
+    "If the prompt suggests a puzzle, prefer a small board, explicit state transitions, and a clear success condition such as tile ordering, matching, or path completion.",
     resolvedPhysics ? "Matter.js is enabled; create and clear the engine safely and keep body counts bounded." : "Do not use Matter.js unless the game concept explicitly needs rigid-body physics.",
     `Use ${mainPathForLanguage("microScript")} in the JSON schema, and keep the generated code free of browser/network/DOM APIs.`,
     buildMicroScriptSyntaxPromptRules(),
@@ -2066,6 +2421,7 @@ function buildMicroStudioJavaScriptSystemPrompt(request, resolvedPhysics) {
     "Do not use browser or canvas APIs such as line(), circle(), rect(), fillText(), strokeText(), strokeStyle, fillStyle, document, window, addEventListener, onMouseDown, onMouseUp, or onClick.",
     buildMicroStudioInputPromptRules(),
     buildMicroStudioGenrePromptRules(request),
+    "If the prompt suggests a puzzle, prefer a small board, explicit state transitions, and a clear success condition such as tile ordering, matching, or path completion.",
     resolvedPhysics ? "Matter.js is enabled; create and clear the engine safely and keep body counts bounded." : "Do not use Matter.js unless the game concept explicitly needs rigid-body physics.",
     `Use ${mainPathForLanguage("microStudioJavaScript")} in the JSON schema, and keep the generated code free of browser/network/DOM APIs.`,
     buildMicroStudioJavaScriptSyntaxPromptRules(),
@@ -3194,6 +3550,8 @@ class AiGameGeneratorService {
         const fallbackGenre = fallbackGenreName(request);
         warnings.push(fallbackGenre === "ticTacToe"
           ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio tic-tac-toe fallback was inserted."
+          : fallbackGenre === "puzzle"
+            ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio puzzle fallback was inserted."
           : fallbackGenre === "platformer"
             ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio platformer fallback was inserted."
             : fallbackGenre === "shooter"
@@ -3976,8 +4334,10 @@ module.exports = {
   validateJavaScriptCode,
   validateMicroStudioRuntimeApiUsage,
   buildMicroStudioJavaScriptTicTacToeFallbackGameCode,
+  buildMicroStudioJavaScriptPuzzleFallbackGameCode,
   buildMicroStudioJavaScriptPlatformerFallbackGameCode,
   buildMicroStudioJavaScriptShooterFallbackGameCode,
+  buildMicroScriptPuzzleFallbackGameCode,
   buildMicroScriptPlatformerFallbackGameCode,
   buildMicroScriptShooterFallbackGameCode,
   gameLanguageConfig
