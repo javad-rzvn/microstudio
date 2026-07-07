@@ -274,8 +274,6 @@ class @WebApp
         console.info "redirecting to: "+redir
         return res.redirect(redir)
 
-      file = "#{user.id}/#{project.id}/ms/main.ms"
-
       encoding = "text"
 
       manager = @getProjectManager(project)
@@ -467,8 +465,17 @@ class @WebApp
           res.setHeader("Content-Type", "application/javascript")
           res.send content
         else
-          console.info "couldn't read file: #{req.path}"
-          res.status(404).send("Error 404")
+          alternateRoot = if sourceRoot == "ms" then "js" else "ms"
+          alternateExt = if alternateRoot == "js" then "js" else "ms"
+          alternateSourceFile = sourceFile.replace /\.(ms|js)$/i,".#{alternateExt}"
+
+          @server.content.files.read "#{user.id}/#{project.id}/#{alternateRoot}/#{alternateSourceFile}","text",(altContent)=>
+            if altContent?
+              res.setHeader("Content-Type", "application/javascript")
+              res.send altContent
+            else
+              console.info "couldn't read file: #{req.path}"
+              res.status(404).send("Error 404")
 
     # asset thumbnail
     @app.get /^\/[^\/\|\?\&\.]+\/[^\/\|\?\&\.]+(\/([^\/\|\?\&\.]+)?)?\/(assets_th|sounds_th|music_th)\/[A-Za-z0-9_-]+.png$/,(req,res)=>

@@ -485,7 +485,9 @@ this.Content = class Content {
       } else {
         content = DEFAULT_CODE.microscript;
       }
-      return this.files.write(`${owner.id}/${project.id}/ms/main.ms`, content, () => {
+      const sourceRoot = String(project.language || "").toLowerCase() === "javascript" ? "js" : "ms";
+      const sourceExt = sourceRoot === "js" ? "js" : "ms";
+      return this.files.write(`${owner.id}/${project.id}/${sourceRoot}/main.${sourceExt}`, content, () => {
         return this.files.copyFile("../static/img/defaultappicon.png", `${owner.id}/${project.id}/sprites/icon.png`, () => {
           return callback(project);
         });

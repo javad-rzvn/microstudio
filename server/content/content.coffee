@@ -369,7 +369,10 @@ class @Content
       else
         content = DEFAULT_CODE.microscript
 
-      @files.write "#{owner.id}/#{project.id}/ms/main.ms",content,()=>
+      sourceRoot = if String(project.language or "").toLowerCase() == "javascript" then "js" else "ms"
+      sourceExt = if sourceRoot == "js" then "js" else "ms"
+
+      @files.write "#{owner.id}/#{project.id}/#{sourceRoot}/main.#{sourceExt}",content,()=>
         @files.copyFile "../static/img/defaultappicon.png","#{owner.id}/#{project.id}/sprites/icon.png",()=>
           callback(project)
 

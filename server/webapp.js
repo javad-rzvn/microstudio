@@ -523,13 +523,23 @@ this.WebApp = class WebApp {
       sourceRoot = s[s.length - 3];
       sourceFile = s[s.length - 1];
       return this.server.content.files.read(`${user.id}/${project.id}/${sourceRoot}/${sourceFile}`, "text", (content) => {
+        var alternateExt, alternateRoot, alternateSourceFile;
         if (content != null) {
           res.setHeader("Content-Type", "application/javascript");
           return res.send(content);
-        } else {
-          console.info(`couldn't read file: ${req.path}`);
-          return res.status(404).send("Error 404");
         }
+        alternateRoot = sourceRoot === "ms" ? "js" : "ms";
+        alternateExt = alternateRoot === "js" ? "js" : "ms";
+        alternateSourceFile = sourceFile.replace(/\.(ms|js)$/i, `.${alternateExt}`);
+        return this.server.content.files.read(`${user.id}/${project.id}/${alternateRoot}/${alternateSourceFile}`, "text", (altContent) => {
+          if (altContent != null) {
+            res.setHeader("Content-Type", "application/javascript");
+            return res.send(altContent);
+          } else {
+            console.info(`couldn't read file: ${req.path}`);
+            return res.status(404).send("Error 404");
+          }
+        });
       });
     });
     // asset thumbnail
