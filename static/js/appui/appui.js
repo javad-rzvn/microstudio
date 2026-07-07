@@ -1471,7 +1471,7 @@ AppUI = class AppUI {
       }
       switch (ref[i]) {
         case "ai-generator-improve":
-          element.disabled = ideaText.length === 0;
+          element.disabled = ideaText.length === 0 || this.aiBusy;
           break;
         case "ai-generator-generate":
           element.disabled = !canGenerate;
@@ -2059,7 +2059,7 @@ AppUI = class AppUI {
   }
 
   improveAiIdeaPrompt() {
-    var idea, ideaInput, improved;
+    var idea, ideaInput, payload;
     ideaInput = this.get("ai-generator-idea");
     if (ideaInput == null) {
       return;
@@ -2069,15 +2069,28 @@ AppUI = class AppUI {
       this.setAiStatus("Write a game idea first, then improve it.", true);
       return;
     }
-    improved = this.buildImprovedAiIdeaPrompt(idea);
-    if (!improved.length) {
-      this.setAiStatus("Could not improve the prompt.", true);
-      return;
-    }
-    ideaInput.value = improved;
-    ideaInput.focus();
-    this.updateAiGeneratorButtons();
-    return this.setAiStatus("Expanded the prompt with gameplay rules and microStudio details.");
+    payload = this.getAiRequestPayload();
+    this.setAiBusy(true);
+    this.setAiStatus("Improving prompt...");
+    return this.postAiRequest("/api/ai/improve-game-idea", payload).then((result) => {
+      var improved;
+      this.setAiBusy(false);
+      improved = (result != null ? result.improvedPrompt : void 0) || "";
+      if (!improved.length) {
+        this.setAiStatus("AI did not return an improved prompt.", true);
+        return;
+      }
+      ideaInput.value = improved;
+      ideaInput.focus();
+      this.updateAiGeneratorButtons();
+      return this.setAiStatus("Prompt improved.");
+    }, (err) => {
+      if (this.isAiAbortError(err)) {
+        return;
+      }
+      this.setAiBusy(false);
+      return this.setAiStatus(err.message || "Prompt improvement failed", true);
+    });
   }
 
   exportAiDraftJson() {
@@ -2136,7 +2149,8 @@ AppUI = class AppUI {
     payload = {
       draftId: this.aiDraft.id,
       mode: targetMode,
-      targetProjectId: targetMode === "apply_to_current_project" && this.app.project != null ? this.app.project.id : null
+      targetProjectId: targetMode === "apply_to_current_project" && this.app.project != null ? this.app.project.id : null,
+      disableFallback: (this.get("ai-generator-disable-fallback") != null) && this.get("ai-generator-disable-fallback").checked === true
     };
     applyToCurrentProject = targetMode === "apply_to_current_project";
     withConfirm = () => {

@@ -72,6 +72,9 @@ class @API
     @app.post /^\/api\/ai\/generate-game\/?$/, (req,res)=>
       @handleAiGenerate req,res
 
+    @app.post /^\/api\/ai\/improve-game-idea\/?$/, (req,res)=>
+      @handleAiImproveGameIdea req,res
+
     @app.post /^\/api\/ai\/regenerate-game\/?$/, (req,res)=>
       @handleAiRegenerate req,res
 
@@ -158,6 +161,17 @@ class @API
     return @sendError res,429,"rate limited" if not @server.rate_limiter.accept "ai_generate_ip",req.ip
     return @sendError res,429,"rate limited" if not @server.rate_limiter.accept "ai_generate_user",user.id
     @ai.generateGameProject(req.body or {},user).then((result)=>
+      res.json result
+    ).catch((err)=>
+      @handleAiError res,err
+    )
+
+  handleAiImproveGameIdea:(req,res)->
+    user = @getCurrentUser req
+    return @sendError res,401,"not connected" if not user?
+    return @sendError res,429,"rate limited" if not @server.rate_limiter.accept "ai_generate_ip",req.ip
+    return @sendError res,429,"rate limited" if not @server.rate_limiter.accept "ai_generate_user",user.id
+    @ai.improveGameIdea(req.body or {},user).then((result)=>
       res.json result
     ).catch((err)=>
       @handleAiError res,err

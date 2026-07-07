@@ -88,6 +88,10 @@ this.API = (function() {
       return this.handleAiGenerate(req, res);
     });
 
+    this.app.post(/^\/api\/ai\/improve-game-idea\/?$/, async (req, res) => {
+      return this.handleAiImproveGameIdea(req, res);
+    });
+
     this.app.post(/^\/api\/ai\/regenerate-game\/?$/, async (req, res) => {
       return this.handleAiRegenerate(req, res);
     });
@@ -215,6 +219,25 @@ this.API = (function() {
     }
     try {
       return res.json(await this.ai.generateGameProject(req.body || {}, user));
+    } catch (err) {
+      return this.handleAiError(res, err);
+    }
+  };
+
+  API.prototype.handleAiImproveGameIdea = async function(req, res) {
+    var user;
+    user = this.getCurrentUser(req);
+    if (user == null) {
+      return this.sendError(res, 401, "not connected");
+    }
+    if (!this.server.rate_limiter.accept("ai_generate_ip", req.ip)) {
+      return this.sendError(res, 429, "rate limited");
+    }
+    if (!this.server.rate_limiter.accept("ai_generate_user", user.id)) {
+      return this.sendError(res, 429, "rate limited");
+    }
+    try {
+      return res.json(await this.ai.improveGameIdea(req.body || {}, user));
     } catch (err) {
       return this.handleAiError(res, err);
     }

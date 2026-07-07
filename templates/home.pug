@@ -461,6 +461,9 @@ html(lang=language, dir=language == "fa" ? "rtl" : "ltr")
                         button#ai-generator-improve(type="button" title=translator.get("Expand the idea with gameplay rules, constraints, and microStudio-native details.")) #{translator.get("Improve prompt")}
                       textarea#ai-generator-idea(rows="8" placeholder="Create a 2D physics puzzle game where the player drops balls into baskets.")
                       div.ai-generator-idea-help #{translator.get("Expand the idea with controls, success conditions, and microStudio-native rules before generating.")}
+                      label.ai-generator-option(for="ai-generator-disable-fallback")
+                        input#ai-generator-disable-fallback(type="checkbox")
+                        span #{translator.get("Disable fallback replacement and keep the generated code close to the prompt")}
 
                     div.ai-generator-grid
                       div

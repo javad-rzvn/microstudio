@@ -842,11 +842,44 @@ function isFlappyRequest(request) {
   return /\bflappy\b|flappy bird|tap to fly|flying through pipes/.test(fallbackRequestText(request));
 }
 
+function isMagnifierRequest(request) {
+  const text = fallbackRequestText(request);
+  return /\bmagnifier\b|\bmagnifying\b|\bmagnify\b|\blens\b|\bzoom\b|larger text|large text|enlarged text|enlarge(?:s|d)?\s+(?:letters|words|text)|hover.*paper|paper.*hover/.test(text);
+}
+
+function isEducationalSimulationRequest(request) {
+  const text = fallbackRequestText(request);
+  if (isMagnifierRequest(request)) {
+    return true;
+  }
+  return /educational|education|teach|teaches|learn|learning|lesson|simulation|simulator|simulate|demonstrat|experiment|application of|how .* works|interactive.*tool|real[-\s]?world|concept|science|physics|biology|chemistry|math|tool.*use|use.*tool/.test(text);
+}
+
 function validateGeneratedIntentForRequest(code, request, language) {
   const text = typeof code === "string" ? code.toLowerCase() : "";
   const errors = [];
   const has = (pattern) => pattern.test(text);
   const wrongArcadeFallback = /stars|spawnstar|falling|lives|game\.player\.vx|player\.vx|collectible_star/.test(text);
+
+  if (isMagnifierRequest(request)) {
+    if (!has(/magnifier|magnify|lens|zoom/) || !has(/paper|document|text|word|letter/) || !has(/mouse|touch|pointer|hover/) || !has(/large|larger|enlarged|zoomed|scale/)) {
+      errors.push("Magnifier request must implement a pointer-controlled lens over paper/document text that shows enlarged text or zoomed content.");
+    }
+    if (wrongArcadeFallback) {
+      errors.push("Magnifier/educational simulation request cannot be replaced by an arcade collector/falling-stars game.");
+    }
+  } else if (isEducationalSimulationRequest(request)) {
+    if (wrongArcadeFallback) {
+      errors.push("Educational/simulation requests cannot be replaced by an arcade collector/falling-stars game.");
+    }
+    if (!has(/teach|learn|lesson|explain|observe|simulate|demo|tool|concept|objective|success|complete|status|instruction|try|drag|hover|mouse|touch/)) {
+      errors.push("Educational/simulation requests must include an interactive teaching mechanic with visible instructions and feedback.");
+    }
+  }
+
+  if (hasSpecificFallbackIntent(request) && !isArcadeCollectorRequest(request) && wrongArcadeFallback) {
+    errors.push("Specific requested game intent cannot be replaced by the generic arcade collector/falling-stars fallback.");
+  }
 
   if (isTicTacToeRequest(request)) {
     if (!has(/board|grid/) || !has(/currentplayer|current_player|turn/) || !has(/checkwin|winner/) || !has(/"x"|'x'/) || !has(/"o"|'o'/)) {
@@ -957,6 +990,12 @@ function isPuzzlePlatformerRequest(request) {
 }
 
 function fallbackGenreName(request) {
+  if (isMagnifierRequest(request)) {
+    return "magnifier";
+  }
+  if (isEducationalSimulationRequest(request)) {
+    return "educationalSimulation";
+  }
   if (isTicTacToeRequest(request)) {
     return "ticTacToe";
   }
@@ -995,6 +1034,478 @@ function fallbackGenreName(request) {
   }
   return null;
 }
+
+
+function buildMicroScriptMagnifierFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "Magnifier Explorer");
+  const description = JSON.stringify((plan.project && plan.project.description) || compactIdeaText(request));
+  return `// ${title}
+// ${description}
+// Safe microStudio microScript magnifier simulation.
+// This fallback preserves the real requested mechanic: hover a magnifier over paper to read larger text.
+
+game = object
+  lensX = 0
+  lensY = 0
+  lensSize = 44
+  words = []
+  wordX = []
+  wordY = []
+  discovered = []
+  focusIndex = -1
+  foundCount = 0
+  complete = false
+  message = "Move the magnifier over tiny paper text."
+end
+
+titleText = ${title}
+controlsText = "Move mouse/touch over paper | Space or R to restart"
+
+resetGame = function()
+  game.lensX = 0
+  game.lensY = 0
+  game.lensSize = 44
+  game.words = ["Tiny label", "Fine print", "Small note", "Hidden clue"]
+  game.wordX = [-58, -20, 24, 58]
+  game.wordY = [-20, 4, 26, -34]
+  game.discovered = [false, false, false, false]
+  game.focusIndex = -1
+  game.foundCount = 0
+  game.complete = false
+  game.message = "Hover the lens over all tiny words."
+end
+
+init = function()
+  resetGame()
+end
+
+update = function()
+  if keyboard.press.SPACE or keyboard.press.R or keyboard.press.KEY_R then
+    resetGame()
+    return
+  end
+
+  game.lensX = mouse.x
+  game.lensY = mouse.y
+
+  if touch.touching then
+    game.lensX = touch.x
+    game.lensY = touch.y
+  end
+
+  updateLens()
+end
+
+updateLens = function()
+  game.focusIndex = -1
+
+  for i = 0 to game.words.length - 1
+    if abs(game.lensX - game.wordX[i]) < 28 and abs(game.lensY - game.wordY[i]) < 14 then
+      game.focusIndex = i
+
+      if not game.discovered[i] then
+        game.discovered[i] = true
+        game.foundCount += 1
+      end
+    end
+  end
+
+  if game.foundCount >= game.words.length then
+    game.complete = true
+    game.message = "Success: the magnifier made every tiny text readable."
+  elsif game.focusIndex >= 0 then
+    game.message = "The lens enlarges: " + game.words[game.focusIndex]
+  else
+    game.message = "Move the lens over tiny paper text."
+  end
+end
+
+draw = function()
+  screen.clear("#0f172a")
+  screen.drawText(titleText, 0, -92, 8, "#e2e8f0")
+  screen.drawText("Found: " + game.foundCount + " / " + game.words.length, 0, -78, 5, "#94a3b8")
+
+  drawPaper()
+  drawMagnifier()
+
+  screen.drawText(game.message, 0, 82, 5, "#cbd5e1")
+  screen.drawText(controlsText, 0, 96, 5, "#94a3b8")
+
+  if game.complete then
+    screen.drawText("Lesson: magnifiers enlarge tiny details.", 0, -2, 7, "#86efac")
+  end
+end
+
+drawPaper = function()
+  paperX = 0
+  paperY = 0
+  paperW = 170
+  paperH = 104
+
+  screen.fillRect(paperX, paperY, paperW, paperH, "#f8fafc")
+  screen.drawRect(paperX, paperY, paperW, paperH, "#64748b")
+  screen.drawText("Paper with tiny text", 0, -42, 5, "#334155")
+
+  for i = 0 to game.words.length - 1
+    color = "#94a3b8"
+    if game.discovered[i] then
+      color = "#16a34a"
+    end
+    screen.drawText(game.words[i], game.wordX[i], game.wordY[i], 3, color)
+  end
+end
+
+drawMagnifier = function()
+  screen.drawRound(game.lensX, game.lensY, game.lensSize, game.lensSize, "#38bdf8")
+  screen.drawLine(game.lensX + 16, game.lensY + 16, game.lensX + 36, game.lensY + 36, "#38bdf8")
+  screen.drawRound(game.lensX, game.lensY, game.lensSize - 6, game.lensSize - 6, "#bae6fd")
+
+  if game.focusIndex >= 0 then
+    screen.fillRect(0, 52, 150, 24, "#1e293b")
+    screen.drawText(game.words[game.focusIndex], 0, 52, 10, "#f8fafc")
+  else
+    screen.drawText("Move lens", game.lensX, game.lensY, 4, "#bae6fd")
+  end
+end
+`;
+}
+
+function buildMicroStudioJavaScriptMagnifierFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "Magnifier Explorer");
+  const description = JSON.stringify((plan.project && plan.project.description) || compactIdeaText(request));
+  return `// ${title}
+// ${description}
+// Safe microStudio JavaScript magnifier simulation.
+// This fallback preserves the real requested mechanic: hover a magnifier over paper to read larger text.
+
+const game = {
+  lensX: 0,
+  lensY: 0,
+  lensSize: 44,
+  words: [],
+  wordX: [],
+  wordY: [],
+  discovered: [],
+  focusIndex: -1,
+  foundCount: 0,
+  complete: false,
+  message: "Move the magnifier over tiny paper text."
+};
+
+const titleText = ${title};
+const controlsText = "Move mouse/touch over paper | Space or R to restart";
+
+function resetGame() {
+  game.lensX = 0;
+  game.lensY = 0;
+  game.lensSize = 44;
+  game.words = ["Tiny label", "Fine print", "Small note", "Hidden clue"];
+  game.wordX = [-58, -20, 24, 58];
+  game.wordY = [-20, 4, 26, -34];
+  game.discovered = [false, false, false, false];
+  game.focusIndex = -1;
+  game.foundCount = 0;
+  game.complete = false;
+  game.message = "Hover the lens over all tiny words.";
+}
+
+function init() {
+  resetGame();
+}
+
+function update() {
+  if (keyboard.press.SPACE || keyboard.press.R || keyboard.press.KEY_R) {
+    resetGame();
+    return;
+  }
+
+  game.lensX = mouse.x;
+  game.lensY = mouse.y;
+
+  if (touch.touching) {
+    game.lensX = touch.x;
+    game.lensY = touch.y;
+  }
+
+  updateLens();
+}
+
+function updateLens() {
+  game.focusIndex = -1;
+
+  for (let i = 0; i < game.words.length; i += 1) {
+    if (Math.abs(game.lensX - game.wordX[i]) < 28 && Math.abs(game.lensY - game.wordY[i]) < 14) {
+      game.focusIndex = i;
+
+      if (!game.discovered[i]) {
+        game.discovered[i] = true;
+        game.foundCount += 1;
+      }
+    }
+  }
+
+  if (game.foundCount >= game.words.length) {
+    game.complete = true;
+    game.message = "Success: the magnifier made every tiny text readable.";
+  } else if (game.focusIndex >= 0) {
+    game.message = "The lens enlarges: " + game.words[game.focusIndex];
+  } else {
+    game.message = "Move the lens over tiny paper text.";
+  }
+}
+
+function draw() {
+  screen.clear("#0f172a");
+  screen.drawText(titleText, 0, -92, 8, "#e2e8f0");
+  screen.drawText("Found: " + game.foundCount + " / " + game.words.length, 0, -78, 5, "#94a3b8");
+
+  drawPaper();
+  drawMagnifier();
+
+  screen.drawText(game.message, 0, 82, 5, "#cbd5e1");
+  screen.drawText(controlsText, 0, 96, 5, "#94a3b8");
+
+  if (game.complete) {
+    screen.drawText("Lesson: magnifiers enlarge tiny details.", 0, -2, 7, "#86efac");
+  }
+}
+
+function drawPaper() {
+  const paperX = 0;
+  const paperY = 0;
+  const paperW = 170;
+  const paperH = 104;
+
+  screen.fillRect(paperX, paperY, paperW, paperH, "#f8fafc");
+  screen.drawRect(paperX, paperY, paperW, paperH, "#64748b");
+  screen.drawText("Paper with tiny text", 0, -42, 5, "#334155");
+
+  for (let i = 0; i < game.words.length; i += 1) {
+    const color = game.discovered[i] ? "#16a34a" : "#94a3b8";
+    screen.drawText(game.words[i], game.wordX[i], game.wordY[i], 3, color);
+  }
+}
+
+function drawMagnifier() {
+  screen.drawRound(game.lensX, game.lensY, game.lensSize, game.lensSize, "#38bdf8");
+  screen.drawLine(game.lensX + 16, game.lensY + 16, game.lensX + 36, game.lensY + 36, "#38bdf8");
+  screen.drawRound(game.lensX, game.lensY, game.lensSize - 6, game.lensSize - 6, "#bae6fd");
+
+  if (game.focusIndex >= 0) {
+    screen.fillRect(0, 52, 150, 24, "#1e293b");
+    screen.drawText(game.words[game.focusIndex], 0, 52, 10, "#f8fafc");
+  } else {
+    screen.drawText("Move lens", game.lensX, game.lensY, 4, "#bae6fd");
+  }
+}
+`;
+}
+
+function buildMicroScriptEducationalSimulationFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "Interactive Lesson");
+  const description = JSON.stringify((plan.project && plan.project.description) || compactIdeaText(request));
+  const idea = JSON.stringify(compactIdeaText(request));
+  return `// ${title}
+// ${description}
+// Safe educational/simulation fallback.
+// It preserves the requested subject as an interactive lesson instead of using a generic arcade loop.
+
+game = object
+  pointerX = 0
+  pointerY = 0
+  step = 0
+  progress = 0
+  complete = false
+  message = "Move over the lesson cards to learn by doing."
+  labels = []
+end
+
+titleText = ${title}
+ideaText = ${idea}
+controlsText = "Move mouse/touch over cards | Space or R to restart"
+
+resetGame = function()
+  game.pointerX = 0
+  game.pointerY = 0
+  game.step = 0
+  game.progress = 0
+  game.complete = false
+  game.message = "Move over the lesson cards to learn by doing."
+  game.labels = ["Observe", "Try", "Explain", "Apply"]
+end
+
+init = function()
+  resetGame()
+end
+
+update = function()
+  if keyboard.press.SPACE or keyboard.press.R or keyboard.press.KEY_R then
+    resetGame()
+    return
+  end
+
+  game.pointerX = mouse.x
+  game.pointerY = mouse.y
+
+  if touch.touching then
+    game.pointerX = touch.x
+    game.pointerY = touch.y
+  end
+
+  updateLesson()
+end
+
+updateLesson = function()
+  for i = 0 to game.labels.length - 1
+    cardX = -60 + i * 40
+    cardY = 12
+
+    if abs(game.pointerX - cardX) < 18 and abs(game.pointerY - cardY) < 18 then
+      if i >= game.progress then
+        game.progress = i + 1
+      end
+      game.message = game.labels[i] + ": " + ideaText
+    end
+  end
+
+  if game.progress >= game.labels.length then
+    game.complete = true
+    game.message = "Lesson complete: you explored the concept interactively."
+  end
+end
+
+draw = function()
+  screen.clear("#0f172a")
+  screen.drawText(titleText, 0, -92, 8, "#e2e8f0")
+  screen.drawText("Concept: " + ideaText, 0, -76, 4, "#cbd5e1")
+
+  screen.fillRect(0, -20, 176, 54, "#f8fafc")
+  screen.drawRect(0, -20, 176, 54, "#64748b")
+  screen.drawText("Interactive simulation area", 0, -40, 5, "#334155")
+
+  for i = 0 to game.labels.length - 1
+    cardX = -60 + i * 40
+    cardColor = "#475569"
+    if i < game.progress then
+      cardColor = "#16a34a"
+    end
+    screen.fillRound(cardX, 12, 30, 26, cardColor)
+    screen.drawText(game.labels[i], cardX, 12, 4, "#f8fafc")
+  end
+
+  screen.drawRound(game.pointerX, game.pointerY, 16, 16, "#38bdf8")
+
+  screen.drawText(game.message, 0, 78, 5, "#cbd5e1")
+  screen.drawText(controlsText, 0, 94, 5, "#94a3b8")
+
+  if game.complete then
+    screen.drawText("Success", 0, -2, 10, "#86efac")
+  end
+end
+`;
+}
+
+function buildMicroStudioJavaScriptEducationalSimulationFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "Interactive Lesson");
+  const description = JSON.stringify((plan.project && plan.project.description) || compactIdeaText(request));
+  const idea = JSON.stringify(compactIdeaText(request));
+  return `// ${title}
+// ${description}
+// Safe educational/simulation fallback.
+// It preserves the requested subject as an interactive lesson instead of using a generic arcade loop.
+
+const game = {
+  pointerX: 0,
+  pointerY: 0,
+  step: 0,
+  progress: 0,
+  complete: false,
+  message: "Move over the lesson cards to learn by doing.",
+  labels: []
+};
+
+const titleText = ${title};
+const ideaText = ${idea};
+const controlsText = "Move mouse/touch over cards | Space or R to restart";
+
+function resetGame() {
+  game.pointerX = 0;
+  game.pointerY = 0;
+  game.step = 0;
+  game.progress = 0;
+  game.complete = false;
+  game.message = "Move over the lesson cards to learn by doing.";
+  game.labels = ["Observe", "Try", "Explain", "Apply"];
+}
+
+function init() {
+  resetGame();
+}
+
+function update() {
+  if (keyboard.press.SPACE || keyboard.press.R || keyboard.press.KEY_R) {
+    resetGame();
+    return;
+  }
+
+  game.pointerX = mouse.x;
+  game.pointerY = mouse.y;
+
+  if (touch.touching) {
+    game.pointerX = touch.x;
+    game.pointerY = touch.y;
+  }
+
+  updateLesson();
+}
+
+function updateLesson() {
+  for (let i = 0; i < game.labels.length; i += 1) {
+    const cardX = -60 + i * 40;
+    const cardY = 12;
+
+    if (Math.abs(game.pointerX - cardX) < 18 && Math.abs(game.pointerY - cardY) < 18) {
+      if (i >= game.progress) {
+        game.progress = i + 1;
+      }
+      game.message = game.labels[i] + ": " + ideaText;
+    }
+  }
+
+  if (game.progress >= game.labels.length) {
+    game.complete = true;
+    game.message = "Lesson complete: you explored the concept interactively.";
+  }
+}
+
+function draw() {
+  screen.clear("#0f172a");
+  screen.drawText(titleText, 0, -92, 8, "#e2e8f0");
+  screen.drawText("Concept: " + ideaText, 0, -76, 4, "#cbd5e1");
+
+  screen.fillRect(0, -20, 176, 54, "#f8fafc");
+  screen.drawRect(0, -20, 176, 54, "#64748b");
+  screen.drawText("Interactive simulation area", 0, -40, 5, "#334155");
+
+  for (let i = 0; i < game.labels.length; i += 1) {
+    const cardX = -60 + i * 40;
+    const cardColor = i < game.progress ? "#16a34a" : "#475569";
+    screen.fillRound(cardX, 12, 30, 26, cardColor);
+    screen.drawText(game.labels[i], cardX, 12, 4, "#f8fafc");
+  }
+
+  screen.drawRound(game.pointerX, game.pointerY, 16, 16, "#38bdf8");
+
+  screen.drawText(game.message, 0, 78, 5, "#cbd5e1");
+  screen.drawText(controlsText, 0, 94, 5, "#94a3b8");
+
+  if (game.complete) {
+    screen.drawText("Success", 0, -2, 10, "#86efac");
+  }
+}
+`;
+}
+
 
 function buildMicroStudioJavaScriptPuzzleFallbackGameCode(plan, request) {
   const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
@@ -3842,6 +4353,12 @@ function draw() {
 function buildFallbackGameCode(plan, resolvedPhysics, language = "microScript", request = null) {
   const config = gameLanguageConfig(language);
   if (config.language === "microStudioJavaScript") {
+    if (isMagnifierRequest(request)) {
+      return buildMicroStudioJavaScriptMagnifierFallbackGameCode(plan, request);
+    }
+    if (isEducationalSimulationRequest(request)) {
+      return buildMicroStudioJavaScriptEducationalSimulationFallbackGameCode(plan, request);
+    }
     if (isTicTacToeRequest(request)) {
       return buildMicroStudioJavaScriptTicTacToeFallbackGameCode(plan, request);
     }
@@ -3867,6 +4384,12 @@ function buildFallbackGameCode(plan, resolvedPhysics, language = "microScript", 
       return buildMicroStudioJavaScriptIntentPrototypeFallbackGameCode(plan, request);
     }
     return buildMicroStudioJavaScriptFallbackGameCode(plan, resolvedPhysics, request);
+  }
+  if (isMagnifierRequest(request)) {
+    return buildMicroScriptMagnifierFallbackGameCode(plan, request);
+  }
+  if (isEducationalSimulationRequest(request)) {
+    return buildMicroScriptEducationalSimulationFallbackGameCode(plan, request);
   }
   if (isTicTacToeRequest(request)) {
     return buildMicroScriptTicTacToeFallbackGameCode(plan, request);
@@ -4251,7 +4774,7 @@ function buildMicroStudioCorePromptRules() {
     "Treat the sprite editor and map editor as first-class parts of the workflow; use sprites for characters/UI art and maps for tile layouts or level structure whenever they improve the game.",
     "Prefer a compact, playable starter with a small state object, a few helper functions, and bounded arrays for enemies, bullets, coins, particles, or hazards.",
     "Keep init() for setup, update() for simulation and input, and draw() for rendering only.",
-    "The generated game must match the requested game type and core mechanic. Never substitute a requested board game, puzzle, racing game, shooter, platformer, or named game with an unrelated arcade collector.",
+    "The generated game must match the requested game type and core mechanic. Never substitute a requested board game, puzzle, racing game, shooter, platformer, named game, educational simulation, or tool demonstration with an unrelated arcade collector.",
     "Use microStudio drawing calls for all output and keep the game readable on the built-in Play screen.",
     "Remove off-screen or spent objects promptly, and avoid unbounded spawning or large transient allocations."
   ].join(" ");
@@ -4286,6 +4809,15 @@ function buildMicroStudioJavaScriptSyntaxPromptRules() {
 function buildMicroStudioGenrePromptRules(request) {
   const text = fallbackRequestText(request);
   const rules = [];
+  if (request && request.disableFallback) {
+    rules.push("Strict mode is enabled: preserve the user's requested mechanic and subject exactly, and do not substitute a generic fallback genre or safe replacement.");
+  }
+  if (isMagnifierRequest(request)) {
+    rules.push("For a magnifier/lens game, implement the actual mechanic: a mouse/touch-controlled magnifying glass moves over a paper/document, the area under the lens reveals enlarged text or zoomed content, and the objective teaches how magnification helps reading small text. Do not output a generic arcade collector, falling-star, shooter, platformer, or unrelated score/lives loop.");
+  }
+  if (isEducationalSimulationRequest(request)) {
+    rules.push("For educational or simulation-style requests, preserve the real-world subject and tool behavior. Use direct manipulation, observation, labels, instructions, and success feedback. Do not force a generic arcade loop unless the user explicitly asks for arcade gameplay.");
+  }
   if (isTicTacToeRequest(request)) {
     rules.push("For tic-tac-toe, implement an actual 3x3 turn-based board with X/O state, click handling, win detection across rows/columns/diagonals, draw detection, restart logic, and no falling-star or arcade-collector fallback.");
   }
@@ -4334,6 +4866,7 @@ function buildMicroScriptSystemPrompt(request, resolvedPhysics) {
     buildMicroStudioInputPromptRules(),
     buildMicroStudioGenrePromptRules(request),
     "Important: the user's idea may begin with boilerplate like 'create a 2d game'. Ignore that boilerplate and preserve the actual mechanic, subject, or learning goal that follows it.",
+    request.disableFallback ? "Strict mode is enabled: do not replace the requested game with a fallback starter or unrelated safer genre." : "Fallback starters are allowed only when absolutely necessary to keep the project playable.",
     `Raw idea: ${request.idea}`,
     `Normalized intent: ${ideaSummary}`,
     "If the prompt suggests a puzzle, prefer a small board, explicit state transitions, and a clear success condition such as tile ordering, matching, or path completion.",
@@ -4361,6 +4894,7 @@ function buildMicroStudioJavaScriptSystemPrompt(request, resolvedPhysics) {
     buildMicroStudioInputPromptRules(),
     buildMicroStudioGenrePromptRules(request),
     "Important: the user's idea may begin with boilerplate like 'create a 2d game'. Ignore that boilerplate and preserve the actual mechanic, subject, or learning goal that follows it.",
+    request.disableFallback ? "Strict mode is enabled: do not replace the requested game with a fallback starter or unrelated safer genre." : "Fallback starters are allowed only when absolutely necessary to keep the project playable.",
     `Raw idea: ${request.idea}`,
     `Normalized intent: ${ideaSummary}`,
     "If the prompt suggests a puzzle, prefer a small board, explicit state transitions, and a clear success condition such as tile ordering, matching, or path completion.",
@@ -4410,6 +4944,48 @@ function buildMicroStudioJavaScriptUserPrompt(request, resolvedPhysics) {
     "Return only JSON in this exact shape:",
     JSON.stringify(buildGameProjectSchema("microStudioJavaScript", request, resolvedPhysics), null, 2)
   ].join("\n");
+}
+
+function buildPromptImprovementSystemPrompt(request, resolvedPhysics) {
+  return [
+    "You rewrite user game ideas into stronger prompts for a microStudio game generator.",
+    buildMicroStudioDocGrounding(),
+    "Preserve the actual idea, subject, and learning goal.",
+    "Expand vague requests into a concrete prompt with controls, objective, failure state, success state, and microStudio-native implementation constraints.",
+    "If the idea is educational or simulation-focused, keep that framing and describe what the player should learn by doing.",
+    request.disableFallback
+      ? "Strict mode is enabled: do not suggest fallback starters, unrelated genres, or safe replacements."
+      : "Fallback replacements are allowed only if the idea is vague, but the rewritten prompt should still preserve the original concept.",
+    "Return only the rewritten prompt text.",
+    "Do not return JSON, markdown fences, code, bullet-point commentary, or meta explanations.",
+    resolvedPhysics
+      ? "The generator may use Matter.js if the concept truly needs physics, but keep the prompt focused on the requested game."
+      : "Do not add rigid-body physics unless the concept explicitly needs it."
+  ].join(" ");
+}
+
+function buildPromptImprovementUserPrompt(request, resolvedPhysics) {
+  return [
+    "Rewrite this game idea into a better prompt for a microStudio game generator.",
+    `Raw idea: ${request.idea}`,
+    `Normalized intent: ${summarizeGameIdea(request.idea)}`,
+    `Language: ${request.language}`,
+    `Physics: ${request.physics}`,
+    `Resolved physics: ${resolvedPhysics ? "matterjs" : "manual"}`,
+    `Difficulty: ${request.difficulty}`,
+    `Art style: ${request.artStyle}`,
+    `Aspect ratio: ${request.aspectRatio}`,
+    `Strict mode: ${request.disableFallback ? "enabled" : "disabled"}`,
+    "Keep the result concise, specific, and directly usable as the user's prompt."
+  ].join("\n");
+}
+
+function normalizePromptText(content) {
+  return String(content || "")
+    .replace(/^```(?:text)?\s*/i, "")
+    .replace(/```$/i, "")
+    .replace(/^["']|["']$/g, "")
+    .trim();
 }
 
 function buildMicroStudioJavaScriptTicTacToeFallbackGameCode(plan, request) {
@@ -4930,6 +5506,7 @@ class AiGameGeneratorService {
       artStyle: ["placeholder", "pixel-art", "simple-shapes"].includes(input.artStyle) ? input.artStyle : "placeholder",
       aspectRatio: ["16:9", "4:3", "1:1", "portrait"].includes(input.aspectRatio) ? input.aspectRatio : "16:9",
       generateImages: input.generateImages === true,
+      disableFallback: input.disableFallback === true,
       imageProvider: normalizeImageProvider(typeof input.imageProvider === "string" ? input.imageProvider : "placeholder"),
       imageProviderProfileId: input.imageProviderProfileId != null ? String(input.imageProviderProfileId) : null,
       imageStyle: normalizeImageStyle(typeof input.imageStyle === "string" ? input.imageStyle : "pixel-art"),
@@ -4970,6 +5547,37 @@ class AiGameGeneratorService {
 
   async generateJavaScriptGameProject(request, user) {
     return this.generateMicroStudioJavaScriptGameProject(request, user);
+  }
+
+  async improveGameIdea(input, user) {
+    const request = this.validateRequest(input);
+    const resolvedPhysics = shouldUseMatter(request);
+    const result = await this.gateway.generate({
+      feature: "game-generator-improve-prompt",
+      purpose: "text",
+      providerProfileId: request.providerProfileId,
+      responseFormat: "text",
+      temperature: 0.3,
+      maxTokens: 1200,
+      userId: user && user.id != null ? user.id : null,
+      messages: [
+        { role: "system", content: buildPromptImprovementSystemPrompt(request, resolvedPhysics) },
+        { role: "user", content: buildPromptImprovementUserPrompt(request, resolvedPhysics) }
+      ]
+    });
+    const improvedPrompt = normalizePromptText(result.content);
+    if (!improvedPrompt) {
+      throw new Error("AI did not return an improved prompt");
+    }
+    return {
+      idea: request.idea,
+      improvedPrompt,
+      provider: {
+        id: result.providerId,
+        name: result.providerName,
+        modelId: result.modelId
+      }
+    };
   }
 
   async generateGameProjectForLanguage(request, user, config) {
@@ -5057,6 +5665,9 @@ class AiGameGeneratorService {
 
     const mainFile = files.find((file) => file.path === `${languageConfig.sourceRoot}/main.${languageConfig.sourceExt}`);
     if (mainFile == null) {
+      if (request.disableFallback) {
+        throw new Error(`Model did not provide a usable ${languageConfig.language} source file`);
+      }
       files.unshift({
         path: `${languageConfig.sourceRoot}/main.${languageConfig.sourceExt}`,
         type: "code",
@@ -5476,7 +6087,11 @@ class AiGameGeneratorService {
   sanitizeCodeContent(content, resolvedPhysics, request, warnings, sourcePath, languageConfig) {
     const code = typeof content === "string" ? content : "";
     const config = languageConfig || gameLanguageConfig(request.language);
+    const strictMode = request && request.disableFallback === true;
     if (!code.trim()) {
+      if (strictMode) {
+        throw new Error(`Generated source file ${sourcePath || config.modelSourcePath} was empty`);
+      }
       return buildFallbackGameCode({
         project: { title: this.fallbackTitle(request.idea), description: request.idea },
         gameDesign: this.validateGameDesign({}, request),
@@ -5484,49 +6099,59 @@ class AiGameGeneratorService {
       }, resolvedPhysics, config.language, request);
     }
     if (isUnsafeCode(code)) {
-      warnings.push(`Unsafe code patterns were replaced in ${sourcePath || config.modelSourcePath}`);
-      return buildFallbackGameCode({
-        project: { title: this.fallbackTitle(request.idea), description: request.idea },
-        gameDesign: this.validateGameDesign({}, request),
-        nextSteps: []
-      }, resolvedPhysics, config.language, request);
+      warnings.push(`Unsafe code patterns were detected in ${sourcePath || config.modelSourcePath}`);
+      throw new Error(`Unsafe code patterns were detected in ${sourcePath || config.modelSourcePath}`);
     }
     const validation = validateGeneratedCodeForLanguage(code, config.language);
     if (!validation.ok) {
+      const validationSummary = validation.errors.slice(0, 5).join(", ");
       if (config.language === "microStudioJavaScript") {
         const fallbackGenre = fallbackGenreName(request);
-        warnings.push(fallbackGenre === "ticTacToe"
+        const message = fallbackGenre === "ticTacToe"
           ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio tic-tac-toe fallback was inserted."
           : fallbackGenre === "puzzle"
             ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio puzzle fallback was inserted."
             : fallbackGenre === "puzzlePlatformer"
               ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio puzzle-platformer fallback was inserted."
-            : fallbackGenre === "racing"
-              ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio racing fallback was inserted."
-              : fallbackGenre === "topDownAdventure"
-                ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio top-down adventure fallback was inserted."
-            : fallbackGenre === "platformer"
-              ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio platformer fallback was inserted."
-              : fallbackGenre === "shooter"
-                ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio shooter fallback was inserted."
-              : "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. It used unsupported APIs such as line(), fillText(), strokeStyle, or onMouseDown(). The code was rejected and replaced with a safe microStudio-compatible fallback.");
+              : fallbackGenre === "racing"
+                ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio racing fallback was inserted."
+                : fallbackGenre === "topDownAdventure"
+                  ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio top-down adventure fallback was inserted."
+                : fallbackGenre === "platformer"
+                  ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio platformer fallback was inserted."
+                  : fallbackGenre === "shooter"
+                    ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio shooter fallback was inserted."
+                    : "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. It used unsupported APIs such as line(), fillText(), strokeStyle, or onMouseDown(). The code was rejected and replaced with a safe microStudio-compatible fallback.";
+        if (strictMode) {
+          warnings.push(`${message} Strict mode kept the original code for inspection. Problems: ${validationSummary}`);
+          return code;
+        }
+        warnings.push(message);
       } else {
         const fallbackGenre = fallbackGenreName(request);
-        warnings.push(fallbackGenre === "ticTacToe"
-          ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript tic-tac-toe fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`
+        const message = fallbackGenre === "ticTacToe"
+          ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript tic-tac-toe fallback inserted. Problems: ${validationSummary}`
           : fallbackGenre === "puzzlePlatformer"
-            ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript puzzle-platformer fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`
-          : fallbackGenre === "puzzle"
-            ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript puzzle fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`
-          : fallbackGenre === "racing"
-            ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript racing fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`
-          : fallbackGenre === "topDownAdventure"
-            ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript top-down adventure fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`
-          : fallbackGenre === "platformer"
-            ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript platformer fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`
-          : fallbackGenre === "shooter"
-            ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript shooter fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`
-          : `Invalid microScript in ${sourcePath || config.modelSourcePath}; fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`);
+            ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript puzzle-platformer fallback inserted. Problems: ${validationSummary}`
+            : fallbackGenre === "puzzle"
+              ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript puzzle fallback inserted. Problems: ${validationSummary}`
+              : fallbackGenre === "racing"
+                ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript racing fallback inserted. Problems: ${validationSummary}`
+                : fallbackGenre === "topDownAdventure"
+                  ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript top-down adventure fallback inserted. Problems: ${validationSummary}`
+                  : fallbackGenre === "platformer"
+                    ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript platformer fallback inserted. Problems: ${validationSummary}`
+                    : fallbackGenre === "shooter"
+                      ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript shooter fallback inserted. Problems: ${validationSummary}`
+                      : `Invalid microScript in ${sourcePath || config.modelSourcePath}; fallback inserted. Problems: ${validationSummary}`;
+        if (strictMode) {
+          warnings.push(`${message} Strict mode kept the original code for inspection.`);
+          return code;
+        }
+        warnings.push(message);
+      }
+      if (strictMode) {
+        return code;
       }
       return buildFallbackGameCode({
         project: { title: this.fallbackTitle(request.idea), description: request.idea },
@@ -5537,7 +6162,12 @@ class AiGameGeneratorService {
     const intentValidation = validateGeneratedIntentForRequest(code, request, config.language);
     if (!intentValidation.ok) {
       const fallbackGenre = fallbackGenreName(request);
-      warnings.push(`Generated ${config.language} code did not match the requested game intent in ${sourcePath || config.modelSourcePath}; safe ${fallbackGenre || "generic"} fallback inserted. Problems: ${intentValidation.errors.slice(0, 5).join(", ")}`);
+      const intentSummary = intentValidation.errors.slice(0, 5).join(", ");
+      if (strictMode) {
+        warnings.push(`Generated ${config.language} code did not match the requested game intent in ${sourcePath || config.modelSourcePath}; strict mode kept the original code for inspection. Problems: ${intentSummary}`);
+        return code;
+      }
+      warnings.push(`Generated ${config.language} code did not match the requested game intent in ${sourcePath || config.modelSourcePath}; safe ${fallbackGenre || "generic"} fallback inserted. Problems: ${intentSummary}`);
       return buildFallbackGameCode({
         project: { title: this.fallbackTitle(request.idea), description: request.idea },
         gameDesign: this.validateGameDesign({}, request),
@@ -5547,6 +6177,12 @@ class AiGameGeneratorService {
 
     if (config.language === "microScript" && !hasCoreFunctions(code)) {
       const fallbackGenre = fallbackGenreName(request);
+      if (strictMode) {
+        warnings.push(fallbackGenre
+          ? `Missing microScript init/update/draw callbacks in ${sourcePath || config.modelSourcePath}; strict mode kept the original code for inspection.`
+          : `Missing microScript init/update/draw callbacks in ${sourcePath || config.modelSourcePath}; strict mode kept the original code for inspection.`);
+        return code;
+      }
       warnings.push(fallbackGenre
         ? `Missing microScript init/update/draw callbacks in ${sourcePath || config.modelSourcePath}; safe ${fallbackGenre} fallback inserted.`
         : `Missing microScript init/update/draw callbacks in ${sourcePath || config.modelSourcePath}; fallback starter inserted.`);

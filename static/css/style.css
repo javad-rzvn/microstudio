@@ -1086,6 +1086,24 @@ padding-left: 2px ;
   color: rgba(203,213,225,.82);
 }
 
+.ai-generator-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  color: rgba(226,232,240,.92);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.ai-generator-option input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #60a5fa;
+  flex: 0 0 auto;
+}
+
 .ai-generator-form textarea,
 .ai-generator-form select {
   width: 100%;

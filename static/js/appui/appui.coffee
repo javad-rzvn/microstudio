@@ -1331,7 +1331,7 @@ class AppUI
       continue if not element?
       switch id
         when "ai-generator-improve"
-          element.disabled = ideaText.length == 0
+          element.disabled = ideaText.length == 0 or @aiBusy
         when "ai-generator-generate"
           element.disabled = not canGenerate
         when "ai-generator-regenerate"
@@ -1623,6 +1623,7 @@ class AppUI
     aspectRatio: @get("ai-generator-aspect-ratio").value
     mode: targetMode
     targetProjectId: if targetMode == "apply_to_current_project" then currentProjectId else null
+    disableFallback: @get("ai-generator-disable-fallback")?.checked == true
     constraints:
       maxFiles: 20
       maxFileSizeKb: 120
@@ -1794,16 +1795,24 @@ class AppUI
     if not idea.length
       @setAiStatus "Write a game idea first, then improve it.", true
       return
-
-    improved = @buildImprovedAiIdeaPrompt idea
-    if not improved.length
-      @setAiStatus "Could not improve the prompt.", true
-      return
-
-    ideaInput.value = improved
-    ideaInput.focus()
-    @updateAiGeneratorButtons()
-    @setAiStatus "Expanded the prompt with gameplay rules and microStudio details."
+    payload = @getAiRequestPayload()
+    @setAiBusy true
+    @setAiStatus "Improving prompt..."
+    @postAiRequest("/api/ai/improve-game-idea",payload).then((result)=>
+      @setAiBusy false
+      improved = result?.improvedPrompt or ""
+      if not improved.length
+        @setAiStatus "AI did not return an improved prompt.", true
+        return
+      ideaInput.value = improved
+      ideaInput.focus()
+      @updateAiGeneratorButtons()
+      @setAiStatus "Prompt improved."
+    ,(err)=>
+      return if @isAiAbortError(err)
+      @setAiBusy false
+      @setAiStatus(err.message or "Prompt improvement failed", true)
+    )
 
   exportAiDraftJson:()->
     return @setAiStatus("Generate a draft first.",true) if not @aiDraft?
