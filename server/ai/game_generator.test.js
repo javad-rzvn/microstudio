@@ -6,7 +6,8 @@ const {
   mainPathForLanguage,
   normalizeSourcePathForLanguage,
   validateMicroStudioJavaScriptCode,
-  validateMicroStudioRuntimeApiUsage
+  validateMicroStudioRuntimeApiUsage,
+  buildMicroStudioJavaScriptTicTacToeFallbackGameCode
 } = require("./game_generator.js");
 
 test("normalizes language aliases to internal names", () => {
@@ -56,4 +57,28 @@ test("accepts microStudio screen APIs", () => {
     ok: true,
     errors: []
   });
+});
+
+test("builds a valid tic-tac-toe microStudio JavaScript fallback", () => {
+  const code = buildMicroStudioJavaScriptTicTacToeFallbackGameCode(
+    {
+      project: {
+        title: "Simple Tic-Tac-Toe",
+        description: "A basic 2D Tic-Tac-Toe game with no images."
+      }
+    },
+    {
+      idea: "create a simple 2d tic-tac-toe game with no picture",
+      gameDesign: {
+        genre: "Puzzle",
+        coreLoop: "Player clicks on empty cells to place X or O."
+      }
+    }
+  );
+
+  const validation = validateMicroStudioJavaScriptCode(code);
+  assert.equal(validation.ok, true, validation.errors.join("\n"));
+  assert.ok(code.includes("screen.drawLine"));
+  assert.ok(code.includes("mouse.pressed"));
+  assert.ok(code.includes("function update()"));
 });

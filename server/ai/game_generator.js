@@ -752,10 +752,18 @@ function buildGeneratedAssetManifestFile(normalized, request) {
   };
 }
 
-function buildFallbackGameCode(plan, resolvedPhysics, language = "microScript") {
+function isTicTacToeRequest(request) {
+  const text = `${request && request.idea ? request.idea : ""} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
+  return /tic[-\s]?tac[-\s]?toe|noughts and crosses|three in a row|3x3|grid/.test(text);
+}
+
+function buildFallbackGameCode(plan, resolvedPhysics, language = "microScript", request = null) {
   const config = gameLanguageConfig(language);
   if (config.language === "microStudioJavaScript") {
-    return buildMicroStudioJavaScriptFallbackGameCode(plan, resolvedPhysics);
+    if (isTicTacToeRequest(request)) {
+      return buildMicroStudioJavaScriptTicTacToeFallbackGameCode(plan, request);
+    }
+    return buildMicroStudioJavaScriptFallbackGameCode(plan, resolvedPhysics, request);
   }
   const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
   const description = JSON.stringify((plan.project && plan.project.description) || "");
@@ -1162,7 +1170,179 @@ function buildMicroStudioJavaScriptUserPrompt(request, resolvedPhysics) {
   ].join("\n");
 }
 
-function buildMicroStudioJavaScriptFallbackGameCode(plan, resolvedPhysics) {
+function buildMicroStudioJavaScriptTicTacToeFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
+  const description = JSON.stringify((plan.project && plan.project.description) || "");
+  const controlsText = JSON.stringify("Click a cell | Space or R to restart");
+  return `// ${title}
+// ${description}
+// Safe microStudio JavaScript tic-tac-toe starter.
+
+const game = {
+  cells: [],
+  currentPlayer: "X",
+  winner: "",
+  gameOver: false,
+  prevMousePressed: false,
+  boardLeft: -54,
+  boardTop: -54,
+  cellSize: 36,
+  status: "Click a cell to play."
+};
+
+const titleText = ${title};
+const controlsText = ${controlsText};
+
+function resetGame() {
+  game.cells = ["", "", "", "", "", "", "", "", ""];
+  game.currentPlayer = "X";
+  game.winner = "";
+  game.gameOver = false;
+  game.prevMousePressed = false;
+  game.status = "X starts. Click a cell.";
+}
+
+function getCellIndex(x, y) {
+  if (x < game.boardLeft || y < game.boardTop) {
+    return -1;
+  }
+  if (x >= game.boardLeft + game.cellSize * 3 || y >= game.boardTop + game.cellSize * 3) {
+    return -1;
+  }
+  const col = Math.floor((x - game.boardLeft) / game.cellSize);
+  const row = Math.floor((y - game.boardTop) / game.cellSize);
+  return row * 3 + col;
+}
+
+function checkWinner() {
+  const c = game.cells;
+  const lines = [
+    [0, 1, 2],
+    [3, 4, 5],
+    [6, 7, 8],
+    [0, 3, 6],
+    [1, 4, 7],
+    [2, 5, 8],
+    [0, 4, 8],
+    [2, 4, 6]
+  ];
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const a = c[line[0]];
+    if (a && a === c[line[1]] && a === c[line[2]]) {
+      return a;
+    }
+  }
+  return "";
+}
+
+function isDraw() {
+  for (let i = 0; i < game.cells.length; i += 1) {
+    if (!game.cells[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function placeMove(index) {
+  if (index < 0 || index >= game.cells.length) {
+    return;
+  }
+  if (game.cells[index] || game.gameOver) {
+    return;
+  }
+  game.cells[index] = game.currentPlayer;
+  const winner = checkWinner();
+  if (winner) {
+    game.gameOver = true;
+    game.winner = winner;
+    game.status = winner + " wins!";
+    return;
+  }
+  if (isDraw()) {
+    game.gameOver = true;
+    game.winner = "";
+    game.status = "Draw.";
+    return;
+  }
+  game.currentPlayer = game.currentPlayer === "X" ? "O" : "X";
+  game.status = game.currentPlayer + " to play.";
+}
+
+function handleClick() {
+  const index = getCellIndex(mouse.x, mouse.y);
+  if (index >= 0) {
+    placeMove(index);
+  }
+}
+
+function init() {
+  resetGame();
+}
+
+function update() {
+  if (keyboard.press.SPACE || keyboard.press.KEY_R) {
+    resetGame();
+    return;
+  }
+  if (game.gameOver) {
+    game.prevMousePressed = mouse.pressed;
+    return;
+  }
+  if (mouse.pressed && !game.prevMousePressed) {
+    handleClick();
+  }
+  game.prevMousePressed = mouse.pressed;
+}
+
+function draw() {
+  screen.fillRect(0, 0, screen.width, screen.height, "#0f172a");
+  screen.drawText(titleText, 0, -92, 8, "#e2e8f0");
+  screen.drawText(game.status, 0, 90, 5, "#cbd5e1");
+  screen.drawText(controlsText, 0, 76, 5, "#94a3b8");
+
+  const boardLeft = game.boardLeft;
+  const boardTop = game.boardTop;
+  const boardSize = game.cellSize * 3;
+  const boardRight = boardLeft + boardSize;
+  const boardBottom = boardTop + boardSize;
+
+  screen.drawLine(boardLeft, boardTop, boardRight, boardTop, "#64748b");
+  screen.drawLine(boardLeft, boardBottom, boardRight, boardBottom, "#64748b");
+  screen.drawLine(boardLeft, boardTop, boardLeft, boardBottom, "#64748b");
+  screen.drawLine(boardRight, boardTop, boardRight, boardBottom, "#64748b");
+
+  for (let i = 1; i < 3; i += 1) {
+    const x = boardLeft + i * game.cellSize;
+    const y = boardTop + i * game.cellSize;
+    screen.drawLine(x, boardTop, x, boardBottom, "#64748b");
+    screen.drawLine(boardLeft, y, boardRight, y, "#64748b");
+  }
+
+  for (let index = 0; index < game.cells.length; index += 1) {
+    const value = game.cells[index];
+    if (!value) {
+      continue;
+    }
+    const col = index % 3;
+    const row = Math.floor(index / 3);
+    const centerX = boardLeft + col * game.cellSize + game.cellSize / 2;
+    const centerY = boardTop + row * game.cellSize + game.cellSize / 2;
+    screen.drawText(value, centerX, centerY, 18, value === "X" ? "#f8fafc" : "#fbbf24");
+  }
+
+  if (game.gameOver) {
+    screen.drawText(game.winner ? game.winner + " wins" : "Draw", 0, -6, 10, "#fca5a5");
+  }
+}
+`;
+}
+
+function buildMicroStudioJavaScriptFallbackGameCode(plan, resolvedPhysics, request = null) {
+  if (isTicTacToeRequest(request)) {
+    return buildMicroStudioJavaScriptTicTacToeFallbackGameCode(plan, request);
+  }
   const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
   const description = JSON.stringify((plan.project && plan.project.description) || "");
   const controlText = JSON.stringify((plan.gameDesign && Array.isArray(plan.gameDesign.controls) && plan.gameDesign.controls.length > 0)
@@ -1642,7 +1822,7 @@ class AiGameGeneratorService {
           project: { title, description },
           gameDesign,
           nextSteps
-        }, resolvedPhysics, languageConfig.language),
+        }, resolvedPhysics, languageConfig.language, request),
         encoding: "utf8",
         sourcePath: languageConfig.modelSourcePath,
         preview: "Fallback starter code inserted by server"
@@ -2059,7 +2239,7 @@ class AiGameGeneratorService {
         project: { title: this.fallbackTitle(request.idea), description: request.idea },
         gameDesign: this.validateGameDesign({}, request),
         nextSteps: []
-      }, resolvedPhysics, config.language);
+      }, resolvedPhysics, config.language, request);
     }
     if (isUnsafeCode(code)) {
       warnings.push(`Unsafe code patterns were replaced in ${sourcePath || config.modelSourcePath}`);
@@ -2067,12 +2247,14 @@ class AiGameGeneratorService {
         project: { title: this.fallbackTitle(request.idea), description: request.idea },
         gameDesign: this.validateGameDesign({}, request),
         nextSteps: []
-      }, resolvedPhysics, config.language);
+      }, resolvedPhysics, config.language, request);
     }
     const validation = validateGeneratedCodeForLanguage(code, config.language);
     if (!validation.ok) {
       if (config.language === "microStudioJavaScript") {
-        warnings.push("The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. It used unsupported APIs such as line(), fillText(), strokeStyle, or onMouseDown(). The code was rejected and replaced with a safe microStudio-compatible fallback.");
+        warnings.push(isTicTacToeRequest(request)
+          ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio tic-tac-toe fallback was inserted."
+          : "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. It used unsupported APIs such as line(), fillText(), strokeStyle, or onMouseDown(). The code was rejected and replaced with a safe microStudio-compatible fallback.");
       } else {
         warnings.push(`Invalid microScript in ${sourcePath || config.modelSourcePath}; fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`);
       }
@@ -2080,7 +2262,7 @@ class AiGameGeneratorService {
         project: { title: this.fallbackTitle(request.idea), description: request.idea },
         gameDesign: this.validateGameDesign({}, request),
         nextSteps: []
-      }, resolvedPhysics, config.language);
+      }, resolvedPhysics, config.language, request);
     }
     if (config.language === "microScript" && !hasCoreFunctions(code)) {
       warnings.push(`Missing microScript init/update/draw callbacks in ${sourcePath || config.modelSourcePath}; fallback starter inserted.`);
@@ -2088,7 +2270,7 @@ class AiGameGeneratorService {
         project: { title: this.fallbackTitle(request.idea), description: request.idea },
         gameDesign: this.validateGameDesign({}, request),
         nextSteps: []
-      }, resolvedPhysics, config.language);
+      }, resolvedPhysics, config.language, request);
     }
     return code;
   }
@@ -2849,5 +3031,6 @@ module.exports = {
   validateMicroStudioJavaScriptCode,
   validateJavaScriptCode,
   validateMicroStudioRuntimeApiUsage,
+  buildMicroStudioJavaScriptTicTacToeFallbackGameCode,
   gameLanguageConfig
 };
