@@ -4988,6 +4988,46 @@ function normalizePromptText(content) {
     .trim();
 }
 
+function isStrictGenerationRepairableError(err) {
+  const message = err && err.message ? String(err.message) : "";
+  return /Unsafe code patterns were detected|Model did not provide a usable .* source file|Generated source file .* was empty|Invalid microScript|generic browser\/canvas JavaScript|did not match the requested game intent|Missing microScript init\/update\/draw callbacks/i.test(message);
+}
+
+function buildStrictGenerationRepairSystemPrompt(request, resolvedPhysics, errorMessage) {
+  return [
+    "You repair a microStudio game project after validation detected unsafe or invalid code.",
+    buildMicroStudioDocGrounding(),
+    buildMicroStudioCorePromptRules(),
+    "Return only valid JSON that matches the requested schema.",
+    "Preserve the user's idea and gameplay intent exactly.",
+    "Fix unsafe code, browser APIs, DOM usage, unsupported canvas usage, syntax issues, and missing microStudio lifecycle callbacks.",
+    "Do not replace the request with a fallback genre or unrelated safe starter.",
+    "Do not output markdown, code fences, or commentary.",
+    request.disableFallback
+      ? "Strict mode is enabled: keep the requested game concept and repair the code in place."
+      : "Keep the requested game concept and repair the code in place.",
+    resolvedPhysics
+      ? "Matter.js may be used only if the concept truly needs it."
+      : "Do not introduce Matter.js unless the concept explicitly needs physics.",
+    `Validation error: ${errorMessage || "unknown error"}`
+  ].join(" ");
+}
+
+function buildStrictGenerationRepairUserPrompt(request, resolvedPhysics, projectJson, errorMessage) {
+  return [
+    "Repair this generated project JSON so it is valid microStudio output.",
+    `Idea: ${request.idea}`,
+    `Language: ${request.language}`,
+    `Physics: ${request.physics}`,
+    `Resolved physics: ${resolvedPhysics ? "matterjs" : "manual"}`,
+    `Strict mode: ${request.disableFallback ? "enabled" : "disabled"}`,
+    `Validation error: ${errorMessage || "unknown error"}`,
+    "Original project JSON:",
+    JSON.stringify(projectJson, null, 2),
+    "Return only the corrected JSON."
+  ].join("\n");
+}
+
 function buildMicroStudioJavaScriptTicTacToeFallbackGameCode(plan, request) {
   const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
   const description = JSON.stringify((plan.project && plan.project.description) || "");
@@ -5601,9 +5641,32 @@ class AiGameGeneratorService {
         { role: "user", content: userPrompt }
       ]
     });
-
-    const parsed = this.parseModelJson(providerResult.content);
-    const normalized = await this.validateGeneratedProject(parsed, request, resolvedPhysics, user, config);
+    let parsed = this.parseModelJson(providerResult.content);
+    let normalized;
+    try {
+      normalized = await this.validateGeneratedProject(parsed, request, resolvedPhysics, user, config);
+    } catch (err) {
+      if (!request.disableFallback || !isStrictGenerationRepairableError(err)) {
+        throw err;
+      }
+      const repairResult = await this.gateway.generate({
+        feature: config.featureName,
+        purpose: "text",
+        providerProfileId: request.providerProfileId,
+        responseFormat: "json",
+        temperature: 0.1,
+        maxTokens: 5000,
+        userId: user && user.id != null ? user.id : null,
+        messages: [
+          { role: "system", content: buildStrictGenerationRepairSystemPrompt(request, resolvedPhysics, err.message) },
+          { role: "user", content: buildStrictGenerationRepairUserPrompt(request, resolvedPhysics, parsed, err.message) }
+        ]
+      });
+      parsed = this.parseModelJson(repairResult.content);
+      normalized = await this.validateGeneratedProject(parsed, request, resolvedPhysics, user, config);
+      normalized.warnings = Array.isArray(normalized.warnings) ? normalized.warnings : [];
+      normalized.warnings.push(`Strict-mode repair applied after validation error: ${err.message}`);
+    }
     normalized.provider = {
       id: providerResult.providerId,
       name: providerResult.providerName,
