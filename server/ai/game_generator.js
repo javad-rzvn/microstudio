@@ -4988,6 +4988,13 @@ function normalizePromptText(content) {
     .trim();
 }
 
+function normalizeCodeText(content) {
+  return String(content || "")
+    .replace(/^```(?:microScript|javascript|js|text)?\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+}
+
 function isStrictGenerationRepairableError(err) {
   const message = err && err.message ? String(err.message) : "";
   return /Unsafe code patterns were detected|Model did not provide a usable .* source file|Generated source file .* was empty|Invalid microScript|generic browser\/canvas JavaScript|did not match the requested game intent|Missing microScript init\/update\/draw callbacks/i.test(message);
@@ -5025,6 +5032,48 @@ function buildStrictGenerationRepairUserPrompt(request, resolvedPhysics, project
     "Original project JSON:",
     JSON.stringify(projectJson, null, 2),
     "Return only the corrected JSON."
+  ].join("\n");
+}
+
+function buildStrictSourceRepairSystemPrompt(request, resolvedPhysics, languageConfig, sourcePath, errorMessage) {
+  const language = languageConfig.language;
+  return [
+    `You repair a single microStudio ${language} source file after validation detected unsafe or invalid code.`,
+    buildMicroStudioDocGrounding(),
+    buildMicroStudioCorePromptRules(),
+    request.language === "microStudioJavaScript"
+      ? "Output only microStudio JavaScript code. Do not use browser canvas, DOM, or unsupported APIs."
+      : "Output only microScript code. Do not use JavaScript syntax, braces, semicolons, const, let, or browser APIs.",
+    request.language === "microStudioJavaScript"
+      ? buildMicroStudioJavaScriptSyntaxPromptRules()
+      : buildMicroScriptSyntaxPromptRules(),
+    "Preserve the user's idea and gameplay intent exactly.",
+    "Fix unsafe code, syntax issues, unsupported APIs, and missing lifecycle callbacks.",
+    "Do not replace the request with a fallback starter or unrelated genre.",
+    request.disableFallback
+      ? "Strict mode is enabled: keep the requested game concept and repair this source file in place."
+      : "Keep the requested game concept and repair this source file in place.",
+    resolvedPhysics
+      ? "Matter.js may be used only if the concept truly needs it."
+      : "Do not introduce Matter.js unless the concept explicitly needs physics.",
+    `Source file: ${sourcePath || languageConfig.modelSourcePath}`,
+    `Validation error: ${errorMessage || "unknown error"}`
+  ].join(" ");
+}
+
+function buildStrictSourceRepairUserPrompt(request, resolvedPhysics, languageConfig, sourcePath, code, errorMessage) {
+  return [
+    "Repair this source file so it is valid microStudio code.",
+    `Idea: ${request.idea}`,
+    `Language: ${request.language}`,
+    `Physics: ${request.physics}`,
+    `Resolved physics: ${resolvedPhysics ? "matterjs" : "manual"}`,
+    `Strict mode: ${request.disableFallback ? "enabled" : "disabled"}`,
+    `Source file: ${sourcePath || languageConfig.modelSourcePath}`,
+    `Validation error: ${errorMessage || "unknown error"}`,
+    "Current source code:",
+    code,
+    "Return only the corrected source code."
   ].join("\n");
 }
 
@@ -5885,7 +5934,7 @@ class AiGameGeneratorService {
           warnings.push(`Rejected source file with empty or invalid name: ${file.path}`);
           continue;
         }
-        const content = this.sanitizeCodeContent(file.content, resolvedPhysics, request, warnings, file.path, languageConfig);
+        const content = await this.sanitizeCodeContent(file.content, resolvedPhysics, request, warnings, file.path, languageConfig);
         if (Buffer.byteLength(content, "utf8") > maxBytes) {
           throw new Error(`Code file too large: ${file.path}`);
         }
@@ -6147,12 +6196,33 @@ class AiGameGeneratorService {
     });
   }
 
-  sanitizeCodeContent(content, resolvedPhysics, request, warnings, sourcePath, languageConfig) {
+  async sanitizeCodeContent(content, resolvedPhysics, request, warnings, sourcePath, languageConfig) {
     const code = typeof content === "string" ? content : "";
     const config = languageConfig || gameLanguageConfig(request.language);
     const strictMode = request && request.disableFallback === true;
+    const tryRepair = async (reason) => {
+      const repairResult = await this.gateway.generate({
+        feature: config.featureName,
+        purpose: "text",
+        providerProfileId: request.providerProfileId,
+        responseFormat: "text",
+        temperature: 0.1,
+        maxTokens: 3000,
+        userId: null,
+        messages: [
+          { role: "system", content: buildStrictSourceRepairSystemPrompt(request, resolvedPhysics, config, sourcePath, reason) },
+          { role: "user", content: buildStrictSourceRepairUserPrompt(request, resolvedPhysics, config, sourcePath, code, reason) }
+        ]
+      });
+      const repaired = normalizeCodeText(repairResult.content);
+      return repaired;
+    };
     if (!code.trim()) {
       if (strictMode) {
+        const repaired = normalizeCodeText(await tryRepair(`Generated source file ${sourcePath || config.modelSourcePath} was empty`));
+        if (repaired) {
+          return repaired;
+        }
         throw new Error(`Generated source file ${sourcePath || config.modelSourcePath} was empty`);
       }
       return buildFallbackGameCode({
@@ -6164,7 +6234,18 @@ class AiGameGeneratorService {
     if (isUnsafeCode(code)) {
       const message = `Unsafe code patterns were detected in ${sourcePath || config.modelSourcePath}`;
       if (strictMode) {
-        warnings.push(message);
+        warnings.push(`${message}; attempting strict repair.`);
+        const repaired = normalizeCodeText(await tryRepair(message));
+        if (repaired && !isUnsafeCode(repaired)) {
+          const repairedValidation = validateGeneratedCodeForLanguage(repaired, config.language);
+          if (repairedValidation.ok) {
+            const repairedIntent = validateGeneratedIntentForRequest(repaired, request, config.language);
+            if (repairedIntent.ok && (config.language !== "microScript" || hasCoreFunctions(repaired))) {
+              warnings.push(`Strict repair replaced unsafe code in ${sourcePath || config.modelSourcePath}.`);
+              return repaired;
+            }
+          }
+        }
         throw new Error(message);
       }
       warnings.push(`${message}; safe fallback starter inserted.`);
@@ -6195,8 +6276,17 @@ class AiGameGeneratorService {
                     ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio shooter fallback was inserted."
                     : "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. It used unsupported APIs such as line(), fillText(), strokeStyle, or onMouseDown(). The code was rejected and replaced with a safe microStudio-compatible fallback.";
         if (strictMode) {
-          warnings.push(`${message} Strict mode kept the original code for inspection. Problems: ${validationSummary}`);
-          return code;
+          warnings.push(`${message} Strict mode attempting repair. Problems: ${validationSummary}`);
+          const repaired = normalizeCodeText(await tryRepair(message));
+          if (repaired) {
+            const repairedValidation = validateGeneratedCodeForLanguage(repaired, config.language);
+            const repairedIntent = validateGeneratedIntentForRequest(repaired, request, config.language);
+            if (repairedValidation.ok && repairedIntent.ok) {
+              warnings.push(`Strict repair replaced invalid ${config.language} code in ${sourcePath || config.modelSourcePath}.`);
+              return repaired;
+            }
+          }
+          throw new Error(message);
         }
         warnings.push(message);
       } else {
@@ -6217,8 +6307,17 @@ class AiGameGeneratorService {
                       ? `Invalid microScript in ${sourcePath || config.modelSourcePath}; safe microScript shooter fallback inserted. Problems: ${validationSummary}`
                       : `Invalid microScript in ${sourcePath || config.modelSourcePath}; fallback inserted. Problems: ${validationSummary}`;
         if (strictMode) {
-          warnings.push(`${message} Strict mode kept the original code for inspection.`);
-          return code;
+          warnings.push(`${message} Strict mode attempting repair.`);
+          const repaired = normalizeCodeText(await tryRepair(message));
+          if (repaired) {
+            const repairedValidation = validateGeneratedCodeForLanguage(repaired, config.language);
+            const repairedIntent = validateGeneratedIntentForRequest(repaired, request, config.language);
+            if (repairedValidation.ok && repairedIntent.ok) {
+              warnings.push(`Strict repair replaced invalid ${config.language} code in ${sourcePath || config.modelSourcePath}.`);
+              return repaired;
+            }
+          }
+          throw new Error(message);
         }
         warnings.push(message);
       }
@@ -6236,8 +6335,17 @@ class AiGameGeneratorService {
       const fallbackGenre = fallbackGenreName(request);
       const intentSummary = intentValidation.errors.slice(0, 5).join(", ");
       if (strictMode) {
-        warnings.push(`Generated ${config.language} code did not match the requested game intent in ${sourcePath || config.modelSourcePath}; strict mode kept the original code for inspection. Problems: ${intentSummary}`);
-        return code;
+        warnings.push(`Generated ${config.language} code did not match the requested game intent in ${sourcePath || config.modelSourcePath}; strict mode attempting repair. Problems: ${intentSummary}`);
+        const repaired = normalizeCodeText(await tryRepair(intentSummary));
+        if (repaired) {
+          const repairedValidation = validateGeneratedCodeForLanguage(repaired, config.language);
+          const repairedIntent = validateGeneratedIntentForRequest(repaired, request, config.language);
+          if (repairedValidation.ok && repairedIntent.ok) {
+            warnings.push(`Strict repair replaced intent-mismatched ${config.language} code in ${sourcePath || config.modelSourcePath}.`);
+            return repaired;
+          }
+        }
+        throw new Error(`Generated ${config.language} code did not match the requested game intent in ${sourcePath || config.modelSourcePath}`);
       }
       warnings.push(`Generated ${config.language} code did not match the requested game intent in ${sourcePath || config.modelSourcePath}; safe ${fallbackGenre || "generic"} fallback inserted. Problems: ${intentSummary}`);
       return buildFallbackGameCode({
@@ -6250,10 +6358,20 @@ class AiGameGeneratorService {
     if (config.language === "microScript" && !hasCoreFunctions(code)) {
       const fallbackGenre = fallbackGenreName(request);
       if (strictMode) {
-        warnings.push(fallbackGenre
-          ? `Missing microScript init/update/draw callbacks in ${sourcePath || config.modelSourcePath}; strict mode kept the original code for inspection.`
-          : `Missing microScript init/update/draw callbacks in ${sourcePath || config.modelSourcePath}; strict mode kept the original code for inspection.`);
-        return code;
+        const missingMessage = fallbackGenre
+          ? `Missing microScript init/update/draw callbacks in ${sourcePath || config.modelSourcePath}; strict mode attempting repair.`
+          : `Missing microScript init/update/draw callbacks in ${sourcePath || config.modelSourcePath}; strict mode attempting repair.`;
+        warnings.push(missingMessage);
+        const repaired = normalizeCodeText(await tryRepair(missingMessage));
+        if (repaired) {
+          const repairedValidation = validateGeneratedCodeForLanguage(repaired, config.language);
+          const repairedIntent = validateGeneratedIntentForRequest(repaired, request, config.language);
+          if (repairedValidation.ok && repairedIntent.ok && hasCoreFunctions(repaired)) {
+            warnings.push(`Strict repair replaced incomplete microScript code in ${sourcePath || config.modelSourcePath}.`);
+            return repaired;
+          }
+        }
+        throw new Error(missingMessage);
       }
       warnings.push(fallbackGenre
         ? `Missing microScript init/update/draw callbacks in ${sourcePath || config.modelSourcePath}; safe ${fallbackGenre} fallback inserted.`
