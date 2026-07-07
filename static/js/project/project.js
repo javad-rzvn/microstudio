@@ -322,6 +322,9 @@ this.Project = class Project {
     this.controls = data.controls;
     this.type = data.type;
     this.orientation = data.orientation;
+    if (data.language != null) {
+      this.language = data.language;
+    }
     return this.aspect = data.aspect;
   }
 

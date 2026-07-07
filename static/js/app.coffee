@@ -342,6 +342,8 @@ class App
       when "project_options_updated"
         if @project? and msg.project == @project.id
           @project.optionsUpdated(msg)
+          @editor.updateLanguage()
+          @debug.updateDebuggerVisibility()
           @options.projectOpened()
           @tab_manager.projectOpened()
           @lib_manager.projectOpened()

@@ -282,6 +282,7 @@ this.ProjectManager = class ProjectManager {
           controls: this.project.controls,
           orientation: this.project.orientation,
           aspect: this.project.aspect,
+          language: this.project.language,
           public: this.project.public
         });
       }
@@ -298,6 +299,7 @@ this.ProjectManager = class ProjectManager {
           controls: this.project.controls,
           orientation: this.project.orientation,
           aspect: this.project.aspect,
+          language: this.project.language,
           public: this.project.public
         });
       }

@@ -181,6 +181,7 @@ class @ProjectManager
           controls: @project.controls
           orientation: @project.orientation
           aspect: @project.aspect
+          language: @project.language
           public: @project.public
 
     for listener in @listeners
@@ -193,6 +194,7 @@ class @ProjectManager
           controls: @project.controls
           orientation: @project.orientation
           aspect: @project.aspect
+          language: @project.language
           public: @project.public
 
     return

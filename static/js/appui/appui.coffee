@@ -1768,6 +1768,9 @@ class AppUI
           if targetMode == "new_project"
             @app.updateProjectList result.projectId
           else if @app.project?
+            @app.project.setLanguage result.project.language if result.project?.language?
+            @app.editor.updateLanguage()
+            @app.debug.updateDebuggerVisibility()
             @app.project.load()
             @app.updateProjectList()
           @app.showNotification(if targetMode == "new_project" then "AI project created" else "AI draft applied")

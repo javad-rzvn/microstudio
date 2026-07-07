@@ -444,6 +444,8 @@ App = class App {
       case "project_options_updated":
         if ((this.project != null) && msg.project === this.project.id) {
           this.project.optionsUpdated(msg);
+          this.editor.updateLanguage();
+          this.debug.updateDebuggerVisibility();
           this.options.projectOpened();
           this.tab_manager.projectOpened();
           return this.lib_manager.projectOpened();

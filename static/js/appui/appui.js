@@ -2070,6 +2070,11 @@ AppUI = class AppUI {
           if (targetMode === "new_project") {
             this.app.updateProjectList(result.projectId);
           } else if (this.app.project != null) {
+            if ((result.project != null ? result.project.language : void 0) != null) {
+              this.app.project.setLanguage(result.project.language);
+            }
+            this.app.editor.updateLanguage();
+            this.app.debug.updateDebuggerVisibility();
             this.app.project.load();
             this.app.updateProjectList();
           }

@@ -2513,8 +2513,14 @@ class AiGameGeneratorService {
 
     const applied = [];
     try {
+      const desiredProjectLanguage = gameLanguageConfig(draft.project && draft.project.language ? draft.project.language : draft.request && draft.request.language).projectLanguage;
       if (mode === "new_project") {
         project = await this.createProjectFromDraft(user, draft);
+      } else if (project && project.language !== desiredProjectLanguage) {
+        project.set("language", desiredProjectLanguage);
+        if (project.manager != null) {
+          project.manager.propagateOptions(null);
+        }
       }
 
       for (const file of files) {
@@ -2542,7 +2548,8 @@ class AiGameGeneratorService {
         project: {
           id: project.id,
           title: project.title,
-          slug: project.slug
+          slug: project.slug,
+          language: project.language
         },
         appliedFiles: newPaths,
         deletedFiles: deletePaths

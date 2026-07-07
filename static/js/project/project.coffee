@@ -234,6 +234,7 @@ class @Project
     @controls = data.controls
     @type = data.type
     @orientation = data.orientation
+    @language = data.language if data.language?
     @aspect = data.aspect
 
   addSprite:(sprite)->
