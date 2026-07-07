@@ -776,6 +776,16 @@ function isPuzzleRequest(request) {
   return /puzzle|logic|brain|matching|match[-\s]?3|slide|sliding|swap|tile|sokoban|maze|memory|jigsaw|word[-\s]?game|brain[-\s]?teaser/.test(text);
 }
 
+function isRacingRequest(request) {
+  const text = `${request && request.idea ? request.idea : ""} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
+  return /racing|race|racer|driving|drive|kart|karting|formula|lap|time trial|track|circuit|road trip|car game|vehicle/.test(text);
+}
+
+function isTopDownAdventureRequest(request) {
+  const text = `${request && request.idea ? request.idea : ""} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
+  return /top[-\s]?down|overhead|overworld|dungeon|dungeon crawler|quest|exploration|rpg|zelda[-\s]?like|action[-\s]?adventure|maze|adventure game/.test(text);
+}
+
 function fallbackGenreName(request) {
   if (isTicTacToeRequest(request)) {
     return "ticTacToe";
@@ -788,6 +798,12 @@ function fallbackGenreName(request) {
   }
   if (isPuzzleRequest(request)) {
     return "puzzle";
+  }
+  if (isRacingRequest(request)) {
+    return "racing";
+  }
+  if (isTopDownAdventureRequest(request)) {
+    return "topDownAdventure";
   }
   return null;
 }
@@ -955,6 +971,317 @@ function draw() {
 
   if (game.solved) {
     screen.drawText("Solved", 0, -6, 10, "#86efac");
+  }
+}
+`;
+}
+
+function buildMicroStudioJavaScriptRacingFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
+  const description = JSON.stringify((plan.project && plan.project.description) || "");
+  const controlsText = JSON.stringify("Arrow keys to steer | R to restart");
+  return `// ${title}
+// ${description}
+// Safe microStudio JavaScript racing starter.
+
+const game = {
+  car: {
+    x: 0,
+    y: 58,
+    vx: 0,
+    vy: 0,
+    w: 12,
+    h: 20
+  },
+  gates: [
+    { x: 0, y: -68, w: 28, h: 14, passed: false },
+    { x: 66, y: 0, w: 14, h: 28, passed: false },
+    { x: 0, y: 68, w: 28, h: 14, passed: false },
+    { x: -66, y: 0, w: 14, h: 28, passed: false }
+  ],
+  nextGate: 0,
+  laps: 0,
+  finished: false,
+  message: "Pass each gate in order."
+};
+
+const titleText = ${title};
+const controlsText = ${controlsText};
+
+function resetGame() {
+  game.car.x = 0;
+  game.car.y = 58;
+  game.car.vx = 0;
+  game.car.vy = 0;
+  game.nextGate = 0;
+  game.laps = 0;
+  game.finished = false;
+  game.message = "Pass each gate in order.";
+  for (let i = 0; i < game.gates.length; i += 1) {
+    game.gates[i].passed = false;
+  }
+}
+
+function hit(ax, ay, aw, ah, bx, byPos, bw, bh) {
+  return Math.abs(ax - bx) < (aw + bw) * 0.5 && Math.abs(ay - byPos) < (ah + bh) * 0.5;
+}
+
+function updateCar() {
+  if (keyboard.LEFT) {
+    game.car.vx -= 0.18;
+  }
+  if (keyboard.RIGHT) {
+    game.car.vx += 0.18;
+  }
+  if (keyboard.UP) {
+    game.car.vy -= 0.18;
+  }
+  if (keyboard.DOWN) {
+    game.car.vy += 0.18;
+  }
+
+  game.car.vx *= 0.94;
+  game.car.vy *= 0.94;
+
+  const maxSpeed = 4.6;
+  const speed = Math.sqrt(game.car.vx * game.car.vx + game.car.vy * game.car.vy);
+  if (speed > maxSpeed) {
+    const scale = maxSpeed / speed;
+    game.car.vx *= scale;
+    game.car.vy *= scale;
+  }
+
+  game.car.x += game.car.vx;
+  game.car.y += game.car.vy;
+
+  if (game.car.x < -92) {
+    game.car.x = -92;
+    game.car.vx = 0;
+  }
+  if (game.car.x > 92) {
+    game.car.x = 92;
+    game.car.vx = 0;
+  }
+  if (game.car.y < -84) {
+    game.car.y = -84;
+    game.car.vy = 0;
+  }
+  if (game.car.y > 84) {
+    game.car.y = 84;
+    game.car.vy = 0;
+  }
+}
+
+function updateGates() {
+  if (game.finished) {
+    return;
+  }
+
+  const gate = game.gates[game.nextGate];
+  if (gate && hit(game.car.x, game.car.y, game.car.w, game.car.h, gate.x, gate.y, gate.w, gate.h)) {
+    gate.passed = true;
+    game.nextGate += 1;
+    if (game.nextGate >= game.gates.length) {
+      game.laps += 1;
+      game.finished = true;
+      game.message = "Finish reached. Press R to race again.";
+    } else {
+      game.message = "Gate " + (game.nextGate + 1) + " of " + game.gates.length + ".";
+    }
+  }
+}
+
+function init() {
+  resetGame();
+}
+
+function update() {
+  if (keyboard.press.KEY_R || keyboard.press.SPACE) {
+    resetGame();
+    return;
+  }
+  if (game.finished) {
+    return;
+  }
+
+  updateCar();
+  updateGates();
+}
+
+function draw() {
+  screen.fillRect(0, 0, screen.width, screen.height, "#07111f");
+  screen.drawText(titleText, 0, -92, 8, "#dbeafe");
+  screen.drawText(game.message, 0, 92, 5, "#cbd5e1");
+  screen.drawText("Gates: " + (game.nextGate + 1) + " / " + game.gates.length, 0, -78, 5, "#94a3b8");
+  screen.drawText(controlsText, 0, 78, 5, "#94a3b8");
+
+  screen.drawRect(-96, -76, 192, 152, "#64748b");
+  screen.drawRect(-52, -32, 104, 64, "#0f172a");
+  screen.drawLine(-96, 0, -52, 0, "#334155");
+  screen.drawLine(52, 0, 96, 0, "#334155");
+  screen.drawLine(0, -76, 0, -32, "#334155");
+  screen.drawLine(0, 32, 0, 76, "#334155");
+
+  for (let i = 0; i < game.gates.length; i += 1) {
+    const gate = game.gates[i];
+    const color = gate.passed ? "#22c55e" : (i === game.nextGate ? "#fbbf24" : "#38bdf8");
+    screen.fillRound(gate.x, gate.y, gate.w, gate.h, color);
+  }
+
+  screen.fillRound(game.car.x, game.car.y, game.car.w, game.car.h, "#fb7185");
+  screen.drawRound(game.car.x, game.car.y, game.car.w + 1, game.car.h + 1, "#ef4444");
+
+  if (game.finished) {
+    screen.drawText("Race complete", 0, -6, 10, "#86efac");
+  }
+}
+`;
+}
+
+function buildMicroStudioJavaScriptTopDownAdventureFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
+  const description = JSON.stringify((plan.project && plan.project.description) || "");
+  const controlsText = JSON.stringify("Arrow keys to move | R to restart");
+  return `// ${title}
+// ${description}
+// Safe microStudio JavaScript top-down adventure starter.
+
+const game = {
+  player: {
+    x: -72,
+    y: 58,
+    w: 12,
+    h: 12
+  },
+  walls: [
+    { x: 0, y: -92, w: 200, h: 10 },
+    { x: 0, y: 92, w: 200, h: 10 },
+    { x: -92, y: 0, w: 10, h: 200 },
+    { x: 92, y: 0, w: 10, h: 200 },
+    { x: -24, y: -24, w: 60, h: 10 },
+    { x: 24, y: 20, w: 10, h: 56 },
+    { x: -44, y: 44, w: 84, h: 10 }
+  ],
+  key: { x: -52, y: -48, w: 8, h: 8, collected: false },
+  door: { x: 70, y: -8, w: 12, h: 28 },
+  exit: { x: 76, y: 62, w: 14, h: 14 },
+  hasKey: false,
+  finished: false,
+  message: "Find the key, open the door, reach the exit."
+};
+
+const titleText = ${title};
+const controlsText = ${controlsText};
+
+function resetGame() {
+  game.player.x = -72;
+  game.player.y = 58;
+  game.key.collected = false;
+  game.hasKey = false;
+  game.finished = false;
+  game.message = "Find the key, open the door, reach the exit.";
+}
+
+function hit(ax, ay, aw, ah, bx, byPos, bw, bh) {
+  return Math.abs(ax - bx) < (aw + bw) * 0.5 && Math.abs(ay - byPos) < (ah + bh) * 0.5;
+}
+
+function blockedAt(x, y) {
+  if (x < -88 || x > 88 || y < -88 || y > 88) {
+    return true;
+  }
+  for (let i = 0; i < game.walls.length; i += 1) {
+    const wall = game.walls[i];
+    if (hit(x, y, game.player.w, game.player.h, wall.x, wall.y, wall.w, wall.h)) {
+      return true;
+    }
+  }
+  if (!game.hasKey && hit(x, y, game.player.w, game.player.h, game.door.x, game.door.y, game.door.w, game.door.h)) {
+    return true;
+  }
+  return false;
+}
+
+function movePlayer(dx, dy) {
+  let nextX = game.player.x + dx;
+  if (!blockedAt(nextX, game.player.y)) {
+    game.player.x = nextX;
+  }
+  let nextY = game.player.y + dy;
+  if (!blockedAt(game.player.x, nextY)) {
+    game.player.y = nextY;
+  }
+}
+
+function updateInteractions() {
+  if (!game.key.collected && hit(game.player.x, game.player.y, game.player.w, game.player.h, game.key.x, game.key.y, game.key.w, game.key.h)) {
+    game.key.collected = true;
+    game.hasKey = true;
+    game.message = "Key found. Open the door.";
+  }
+  if (game.hasKey && hit(game.player.x, game.player.y, game.player.w, game.player.h, game.exit.x, game.exit.y, game.exit.w, game.exit.h)) {
+    game.finished = true;
+    game.message = "Exit found. Press R to restart.";
+  }
+}
+
+function init() {
+  resetGame();
+}
+
+function update() {
+  if (keyboard.press.KEY_R || keyboard.press.SPACE) {
+    resetGame();
+    return;
+  }
+  if (game.finished) {
+    return;
+  }
+
+  const speed = 2;
+  if (keyboard.LEFT) {
+    movePlayer(-speed, 0);
+  }
+  if (keyboard.RIGHT) {
+    movePlayer(speed, 0);
+  }
+  if (keyboard.UP) {
+    movePlayer(0, -speed);
+  }
+  if (keyboard.DOWN) {
+    movePlayer(0, speed);
+  }
+
+  updateInteractions();
+}
+
+function draw() {
+  screen.fillRect(0, 0, screen.width, screen.height, "#07111f");
+  screen.drawText(titleText, 0, -92, 8, "#dbeafe");
+  screen.drawText(game.message, 0, 92, 5, "#cbd5e1");
+  screen.drawText("Key: " + (game.hasKey ? "found" : "missing"), 0, -78, 5, "#94a3b8");
+  screen.drawText(controlsText, 0, 78, 5, "#94a3b8");
+
+  for (let i = 0; i < game.walls.length; i += 1) {
+    const wall = game.walls[i];
+    screen.fillRect(wall.x, wall.y, wall.w, wall.h, "#334155");
+  }
+
+  screen.fillRect(game.door.x, game.door.y, game.door.w, game.door.h, game.hasKey ? "#22c55e" : "#f59e0b");
+  screen.drawText("DOOR", game.door.x, game.door.y - 18, 5, "#e2e8f0");
+
+  if (!game.key.collected) {
+    screen.fillRound(game.key.x, game.key.y, game.key.w, game.key.h, "#fbbf24");
+  }
+
+  screen.fillRect(game.exit.x, game.exit.y, game.exit.w, game.exit.h, "#38bdf8");
+  screen.drawText("EXIT", game.exit.x, game.exit.y - 16, 5, "#e2e8f0");
+
+  screen.fillRound(game.player.x, game.player.y, game.player.w, game.player.h, "#fb7185");
+  screen.drawRound(game.player.x, game.player.y, game.player.w + 1, game.player.h + 1, "#ef4444");
+
+  if (game.finished) {
+    screen.drawText("Adventure complete", 0, -6, 10, "#86efac");
   }
 }
 `;
@@ -1534,6 +1861,350 @@ end
 `;
 }
 
+function buildMicroScriptRacingFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
+  const description = JSON.stringify((plan.project && plan.project.description) || "");
+  const controlsText = JSON.stringify("Arrow keys to steer | R to restart");
+  return `// ${title}
+// ${description}
+// Safe microStudio microScript racing starter.
+
+game = object
+  car = object
+    x = 0
+    y = 58
+    vx = 0
+    vy = 0
+    w = 12
+    h = 20
+  end
+  gates = []
+  nextGate = 0
+  laps = 0
+  finished = false
+  message = "Pass each gate in order."
+end
+
+titleText = ${title}
+controlsText = ${controlsText}
+
+resetGame = function()
+  game.car.x = 0
+  game.car.y = 58
+  game.car.vx = 0
+  game.car.vy = 0
+  game.nextGate = 0
+  game.laps = 0
+  game.finished = false
+  game.message = "Pass each gate in order."
+
+  game.gates = []
+  game.gates.push(object x = 0 y = -68 w = 28 h = 14 passed = false end)
+  game.gates.push(object x = 66 y = 0 w = 14 h = 28 passed = false end)
+  game.gates.push(object x = 0 y = 68 w = 28 h = 14 passed = false end)
+  game.gates.push(object x = -66 y = 0 w = 14 h = 28 passed = false end)
+end
+
+hit = function(ax, ay, aw, ah, bx, byPos, bw, bh)
+  return abs(ax - bx) < (aw + bw) * 0.5 and abs(ay - byPos) < (ah + bh) * 0.5
+end
+
+updateCar = function()
+  if keyboard.LEFT then
+    game.car.vx -= 0.18
+  end
+  if keyboard.RIGHT then
+    game.car.vx += 0.18
+  end
+  if keyboard.UP then
+    game.car.vy -= 0.18
+  end
+  if keyboard.DOWN then
+    game.car.vy += 0.18
+  end
+
+  game.car.vx *= 0.94
+  game.car.vy *= 0.94
+
+  if game.car.vx > 4.6 then
+    game.car.vx = 4.6
+  end
+  if game.car.vx < -4.6 then
+    game.car.vx = -4.6
+  end
+  if game.car.vy > 4.6 then
+    game.car.vy = 4.6
+  end
+  if game.car.vy < -4.6 then
+    game.car.vy = -4.6
+  end
+
+  game.car.x += game.car.vx
+  game.car.y += game.car.vy
+
+  if game.car.x < -92 then
+    game.car.x = -92
+    game.car.vx = 0
+  end
+  if game.car.x > 92 then
+    game.car.x = 92
+    game.car.vx = 0
+  end
+  if game.car.y < -84 then
+    game.car.y = -84
+    game.car.vy = 0
+  end
+  if game.car.y > 84 then
+    game.car.y = 84
+    game.car.vy = 0
+  end
+end
+
+updateGates = function()
+  if game.finished then
+    return
+  end
+
+  gate = game.gates[game.nextGate]
+  if gate and hit(game.car.x, game.car.y, game.car.w, game.car.h, gate.x, gate.y, gate.w, gate.h) then
+    gate.passed = true
+    game.nextGate += 1
+    if game.nextGate >= game.gates.length then
+      game.laps += 1
+      game.finished = true
+      game.message = "Finish reached. Press R to race again."
+    else
+      game.message = "Gate " + (game.nextGate + 1) + " of " + game.gates.length + "."
+    end
+  end
+end
+
+init = function()
+  resetGame()
+end
+
+update = function()
+  if keyboard.press.KEY_R or keyboard.press.SPACE then
+    resetGame()
+    return
+  end
+  if game.finished then
+    return
+  end
+
+  updateCar()
+  updateGates()
+end
+
+draw = function()
+  screen.fillRect(0, 0, screen.width, screen.height, "#07111f")
+  screen.drawText(titleText, 0, -92, 8, "#dbeafe")
+  screen.drawText(game.message, 0, 92, 5, "#cbd5e1")
+  screen.drawText("Gates: " + (game.nextGate + 1) + " / " + game.gates.length, 0, -78, 5, "#94a3b8")
+  screen.drawText(controlsText, 0, 78, 5, "#94a3b8")
+
+  screen.drawRect(-96, -76, 192, 152, "#64748b")
+  screen.drawRect(-52, -32, 104, 64, "#0f172a")
+  screen.drawLine(-96, 0, -52, 0, "#334155")
+  screen.drawLine(52, 0, 96, 0, "#334155")
+  screen.drawLine(0, -76, 0, -32, "#334155")
+  screen.drawLine(0, 32, 0, 76, "#334155")
+
+  for i = 0 to game.gates.length - 1
+    gate = game.gates[i]
+    if gate.passed then
+      color = "#22c55e"
+    elsif i == game.nextGate then
+      color = "#fbbf24"
+    else
+      color = "#38bdf8"
+    end
+    screen.fillRound(gate.x, gate.y, gate.w, gate.h, color)
+  end
+
+  screen.fillRound(game.car.x, game.car.y, game.car.w, game.car.h, "#fb7185")
+  screen.drawRound(game.car.x, game.car.y, game.car.w + 1, game.car.h + 1, "#ef4444")
+
+  if game.finished then
+    screen.drawText("Race complete", 0, -6, 10, "#86efac")
+  end
+end
+`;
+}
+
+function buildMicroScriptTopDownAdventureFallbackGameCode(plan, request) {
+  const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
+  const description = JSON.stringify((plan.project && plan.project.description) || "");
+  const controlsText = JSON.stringify("Arrow keys to move | R to restart");
+  return `// ${title}
+// ${description}
+// Safe microStudio microScript top-down adventure starter.
+
+game = object
+  player = object
+    x = -72
+    y = 58
+    w = 12
+    h = 12
+  end
+  walls = []
+  key = object
+    x = -52
+    y = -48
+    w = 8
+    h = 8
+    collected = false
+  end
+  door = object
+    x = 70
+    y = -8
+    w = 12
+    h = 28
+  end
+  exit = object
+    x = 76
+    y = 62
+    w = 14
+    h = 14
+  end
+  hasKey = false
+  finished = false
+  message = "Find the key, open the door, reach the exit."
+end
+
+titleText = ${title}
+controlsText = ${controlsText}
+
+resetGame = function()
+  game.player.x = -72
+  game.player.y = 58
+  game.key.collected = false
+  game.hasKey = false
+  game.finished = false
+  game.message = "Find the key, open the door, reach the exit."
+
+  game.walls = []
+  game.walls.push(object x = 0 y = -92 w = 200 h = 10 end)
+  game.walls.push(object x = 0 y = 92 w = 200 h = 10 end)
+  game.walls.push(object x = -92 y = 0 w = 10 h = 200 end)
+  game.walls.push(object x = 92 y = 0 w = 10 h = 200 end)
+  game.walls.push(object x = -24 y = -24 w = 60 h = 10 end)
+  game.walls.push(object x = 24 y = 20 w = 10 h = 56 end)
+  game.walls.push(object x = -44 y = 44 w = 84 h = 10 end)
+end
+
+hit = function(ax, ay, aw, ah, bx, byPos, bw, bh)
+  return abs(ax - bx) < (aw + bw) * 0.5 and abs(ay - byPos) < (ah + bh) * 0.5
+end
+
+blockedAt = function(x, y)
+  if x < -88 or x > 88 or y < -88 or y > 88 then
+    return true
+  end
+  for i = 0 to game.walls.length - 1
+    wall = game.walls[i]
+    if hit(x, y, game.player.w, game.player.h, wall.x, wall.y, wall.w, wall.h) then
+      return true
+    end
+  end
+  if not game.hasKey and hit(x, y, game.player.w, game.player.h, game.door.x, game.door.y, game.door.w, game.door.h) then
+    return true
+  end
+  return false
+end
+
+movePlayer = function(dx, dy)
+  nextX = game.player.x + dx
+  if not blockedAt(nextX, game.player.y) then
+    game.player.x = nextX
+  end
+
+  nextY = game.player.y + dy
+  if not blockedAt(game.player.x, nextY) then
+    game.player.y = nextY
+  end
+end
+
+updateInteractions = function()
+  if not game.key.collected and hit(game.player.x, game.player.y, game.player.w, game.player.h, game.key.x, game.key.y, game.key.w, game.key.h) then
+    game.key.collected = true
+    game.hasKey = true
+    game.message = "Key found. Open the door."
+  end
+
+  if game.hasKey and hit(game.player.x, game.player.y, game.player.w, game.player.h, game.exit.x, game.exit.y, game.exit.w, game.exit.h) then
+    game.finished = true
+    game.message = "Exit found. Press R to restart."
+  end
+end
+
+init = function()
+  resetGame()
+end
+
+update = function()
+  if keyboard.press.KEY_R or keyboard.press.SPACE then
+    resetGame()
+    return
+  end
+  if game.finished then
+    return
+  end
+
+  speed = 2
+  if keyboard.LEFT then
+    movePlayer(-speed, 0)
+  end
+  if keyboard.RIGHT then
+    movePlayer(speed, 0)
+  end
+  if keyboard.UP then
+    movePlayer(0, -speed)
+  end
+  if keyboard.DOWN then
+    movePlayer(0, speed)
+  end
+
+  updateInteractions()
+end
+
+draw = function()
+  screen.fillRect(0, 0, screen.width, screen.height, "#07111f")
+  screen.drawText(titleText, 0, -92, 8, "#dbeafe")
+  screen.drawText(game.message, 0, 92, 5, "#cbd5e1")
+  screen.drawText("Key: " + (game.hasKey and "found" or "missing"), 0, -78, 5, "#94a3b8")
+  screen.drawText(controlsText, 0, 78, 5, "#94a3b8")
+
+  for i = 0 to game.walls.length - 1
+    wall = game.walls[i]
+    screen.fillRect(wall.x, wall.y, wall.w, wall.h, "#334155")
+  end
+
+  if game.hasKey then
+    doorColor = "#22c55e"
+  else
+    doorColor = "#f59e0b"
+  end
+  screen.fillRect(game.door.x, game.door.y, game.door.w, game.door.h, doorColor)
+  screen.drawText("DOOR", game.door.x, game.door.y - 18, 5, "#e2e8f0")
+
+  if not game.key.collected then
+    screen.fillRound(game.key.x, game.key.y, game.key.w, game.key.h, "#fbbf24")
+  end
+
+  screen.fillRect(game.exit.x, game.exit.y, game.exit.w, game.exit.h, "#38bdf8")
+  screen.drawText("EXIT", game.exit.x, game.exit.y - 16, 5, "#e2e8f0")
+
+  screen.fillRound(game.player.x, game.player.y, game.player.w, game.player.h, "#fb7185")
+  screen.drawRound(game.player.x, game.player.y, game.player.w + 1, game.player.h + 1, "#ef4444")
+
+  if game.finished then
+    screen.drawText("Adventure complete", 0, -6, 10, "#86efac")
+  end
+end
+`;
+}
+
 function buildMicroScriptPlatformerFallbackGameCode(plan, request) {
   const title = JSON.stringify((plan.project && plan.project.title) || "AI Game");
   const description = JSON.stringify((plan.project && plan.project.description) || "");
@@ -1958,6 +2629,12 @@ function buildFallbackGameCode(plan, resolvedPhysics, language = "microScript", 
     if (isPuzzleRequest(request)) {
       return buildMicroStudioJavaScriptPuzzleFallbackGameCode(plan, request);
     }
+    if (isRacingRequest(request)) {
+      return buildMicroStudioJavaScriptRacingFallbackGameCode(plan, request);
+    }
+    if (isTopDownAdventureRequest(request)) {
+      return buildMicroStudioJavaScriptTopDownAdventureFallbackGameCode(plan, request);
+    }
     if (isPlatformerRequest(request)) {
       return buildMicroStudioJavaScriptPlatformerFallbackGameCode(plan, request);
     }
@@ -1968,6 +2645,12 @@ function buildFallbackGameCode(plan, resolvedPhysics, language = "microScript", 
   }
   if (isPuzzleRequest(request)) {
     return buildMicroScriptPuzzleFallbackGameCode(plan, request);
+  }
+  if (isRacingRequest(request)) {
+    return buildMicroScriptRacingFallbackGameCode(plan, request);
+  }
+  if (isTopDownAdventureRequest(request)) {
+    return buildMicroScriptTopDownAdventureFallbackGameCode(plan, request);
   }
   if (isPlatformerRequest(request)) {
     return buildMicroScriptPlatformerFallbackGameCode(plan, request);
@@ -2376,6 +3059,12 @@ function buildMicroStudioGenrePromptRules(request) {
   }
   if (isShooterRequest(request)) {
     rules.push("For a shooter, use movement, fire cooldowns, capped bullets, capped enemies, spawn timers, simple hit detection, score, and lives.");
+  }
+  if (isRacingRequest(request)) {
+    rules.push("For a racing game, use a compact track, checkpoint gates, steering or lane control, speed management, and a clear finish state.");
+  }
+  if (isTopDownAdventureRequest(request)) {
+    rules.push("For a top-down adventure, use room exploration, walls, keys, doors, pickups, and exit or quest triggers with simple collision.");
   }
   if (/grid|board|puzzle|turn[-\s]?based|match|tac[-\s]?toe|sudoku|card/.test(text)) {
     rules.push("For a grid or board game, use simple shapes, lines, pointer input, and clear state text instead of browser canvas habits.");
@@ -3552,10 +4241,14 @@ class AiGameGeneratorService {
           ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio tic-tac-toe fallback was inserted."
           : fallbackGenre === "puzzle"
             ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio puzzle fallback was inserted."
-          : fallbackGenre === "platformer"
-            ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio platformer fallback was inserted."
-            : fallbackGenre === "shooter"
-              ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio shooter fallback was inserted."
+            : fallbackGenre === "racing"
+              ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio racing fallback was inserted."
+              : fallbackGenre === "topDownAdventure"
+                ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio top-down adventure fallback was inserted."
+            : fallbackGenre === "platformer"
+              ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio platformer fallback was inserted."
+              : fallbackGenre === "shooter"
+                ? "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. A safe microStudio shooter fallback was inserted."
               : "The AI generated generic browser/canvas JavaScript instead of microStudio JavaScript. It used unsupported APIs such as line(), fillText(), strokeStyle, or onMouseDown(). The code was rejected and replaced with a safe microStudio-compatible fallback.");
       } else {
         warnings.push(`Invalid microScript in ${sourcePath || config.modelSourcePath}; fallback inserted. Problems: ${validation.errors.slice(0, 5).join(", ")}`);
@@ -4335,9 +5028,13 @@ module.exports = {
   validateMicroStudioRuntimeApiUsage,
   buildMicroStudioJavaScriptTicTacToeFallbackGameCode,
   buildMicroStudioJavaScriptPuzzleFallbackGameCode,
+  buildMicroStudioJavaScriptRacingFallbackGameCode,
+  buildMicroStudioJavaScriptTopDownAdventureFallbackGameCode,
   buildMicroStudioJavaScriptPlatformerFallbackGameCode,
   buildMicroStudioJavaScriptShooterFallbackGameCode,
   buildMicroScriptPuzzleFallbackGameCode,
+  buildMicroScriptRacingFallbackGameCode,
+  buildMicroScriptTopDownAdventureFallbackGameCode,
   buildMicroScriptPlatformerFallbackGameCode,
   buildMicroScriptShooterFallbackGameCode,
   gameLanguageConfig

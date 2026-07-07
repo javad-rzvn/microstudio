@@ -10,9 +10,13 @@ const {
   validateMicroScriptCode,
   buildMicroStudioJavaScriptTicTacToeFallbackGameCode,
   buildMicroStudioJavaScriptPuzzleFallbackGameCode,
+  buildMicroStudioJavaScriptRacingFallbackGameCode,
+  buildMicroStudioJavaScriptTopDownAdventureFallbackGameCode,
   buildMicroStudioJavaScriptPlatformerFallbackGameCode,
   buildMicroStudioJavaScriptShooterFallbackGameCode,
   buildMicroScriptPuzzleFallbackGameCode,
+  buildMicroScriptRacingFallbackGameCode,
+  buildMicroScriptTopDownAdventureFallbackGameCode,
   buildMicroScriptPlatformerFallbackGameCode,
   buildMicroScriptShooterFallbackGameCode
 } = require("./game_generator.js");
@@ -110,6 +114,46 @@ test("builds a valid puzzle microStudio JavaScript fallback", () => {
   assert.ok(code.includes("screen.drawLine"));
 });
 
+test("builds a valid racing microStudio JavaScript fallback", () => {
+  const code = buildMicroStudioJavaScriptRacingFallbackGameCode(
+    {
+      project: {
+        title: "Circuit Dash",
+        description: "A small racing game."
+      }
+    },
+    {
+      idea: "build a racing game with gates"
+    }
+  );
+
+  const validation = validateMicroStudioJavaScriptCode(code);
+  assert.equal(validation.ok, true, validation.errors.join("\n"));
+  assert.ok(code.includes("nextGate"));
+  assert.ok(code.includes("function update()"));
+  assert.ok(code.includes("screen.drawRect"));
+});
+
+test("builds a valid top-down adventure microStudio JavaScript fallback", () => {
+  const code = buildMicroStudioJavaScriptTopDownAdventureFallbackGameCode(
+    {
+      project: {
+        title: "Cavern Quest",
+        description: "A small top-down adventure."
+      }
+    },
+    {
+      idea: "build a top-down adventure with a key and a door"
+    }
+  );
+
+  const validation = validateMicroStudioJavaScriptCode(code);
+  assert.equal(validation.ok, true, validation.errors.join("\n"));
+  assert.ok(code.includes("hasKey"));
+  assert.ok(code.includes("function update()"));
+  assert.ok(code.includes("screen.fillRect"));
+});
+
 test("builds a valid platformer microStudio JavaScript fallback", () => {
   const code = buildMicroStudioJavaScriptPlatformerFallbackGameCode(
     {
@@ -163,6 +207,30 @@ test("builds valid microScript genre fallbacks", () => {
     }
   );
 
+  const racingCode = buildMicroScriptRacingFallbackGameCode(
+    {
+      project: {
+        title: "Circuit Dash",
+        description: "A small racing game."
+      }
+    },
+    {
+      idea: "build a racing game with gates"
+    }
+  );
+
+  const topDownAdventureCode = buildMicroScriptTopDownAdventureFallbackGameCode(
+    {
+      project: {
+        title: "Cavern Quest",
+        description: "A small top-down adventure."
+      }
+    },
+    {
+      idea: "build a top-down adventure with a key and a door"
+    }
+  );
+
   const platformerCode = buildMicroScriptPlatformerFallbackGameCode(
     {
       project: {
@@ -188,14 +256,22 @@ test("builds valid microScript genre fallbacks", () => {
   );
 
   const puzzleValidation = validateMicroScriptCode(puzzleCode);
+  const racingValidation = validateMicroScriptCode(racingCode);
+  const topDownAdventureValidation = validateMicroScriptCode(topDownAdventureCode);
   const platformerValidation = validateMicroScriptCode(platformerCode);
   const shooterValidation = validateMicroScriptCode(shooterCode);
 
   assert.equal(puzzleValidation.ok, true, puzzleValidation.errors.join("\n"));
+  assert.equal(racingValidation.ok, true, racingValidation.errors.join("\n"));
+  assert.equal(topDownAdventureValidation.ok, true, topDownAdventureValidation.errors.join("\n"));
   assert.equal(platformerValidation.ok, true, platformerValidation.errors.join("\n"));
   assert.equal(shooterValidation.ok, true, shooterValidation.errors.join("\n"));
   assert.ok(puzzleCode.includes("blankIndex"));
   assert.ok(puzzleCode.includes("screen.drawLine"));
+  assert.ok(racingCode.includes("nextGate"));
+  assert.ok(racingCode.includes("screen.drawRect"));
+  assert.ok(topDownAdventureCode.includes("hasKey"));
+  assert.ok(topDownAdventureCode.includes("screen.fillRect"));
   assert.ok(platformerCode.includes("Collect the coins"));
   assert.ok(platformerCode.includes("screen.fillRect"));
   assert.ok(shooterCode.includes("spawnEnemy"));
