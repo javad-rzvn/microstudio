@@ -5778,20 +5778,33 @@ class AiGameGeneratorService {
     const mainFile = files.find((file) => file.path === `${languageConfig.sourceRoot}/main.${languageConfig.sourceExt}`);
     if (mainFile == null) {
       if (request.disableFallback) {
-        throw new Error(`Model did not provide a usable ${languageConfig.language} source file`);
+        warnings.push(`Model did not provide a usable ${languageConfig.language} source file; inserting a request-specific starter.`);
+        files.unshift({
+          path: `${languageConfig.sourceRoot}/main.${languageConfig.sourceExt}`,
+          type: "code",
+          content: buildFallbackGameCode({
+            project: { title, description },
+            gameDesign,
+            nextSteps
+          }, resolvedPhysics, languageConfig.language, request),
+          encoding: "utf8",
+          sourcePath: languageConfig.modelSourcePath,
+          preview: "Request-specific starter code inserted by server"
+        });
+      } else {
+        files.unshift({
+          path: `${languageConfig.sourceRoot}/main.${languageConfig.sourceExt}`,
+          type: "code",
+          content: buildFallbackGameCode({
+            project: { title, description },
+            gameDesign,
+            nextSteps
+          }, resolvedPhysics, languageConfig.language, request),
+          encoding: "utf8",
+          sourcePath: languageConfig.modelSourcePath,
+          preview: "Fallback starter code inserted by server"
+        });
       }
-      files.unshift({
-        path: `${languageConfig.sourceRoot}/main.${languageConfig.sourceExt}`,
-        type: "code",
-        content: buildFallbackGameCode({
-          project: { title, description },
-          gameDesign,
-          nextSteps
-        }, resolvedPhysics, languageConfig.language, request),
-        encoding: "utf8",
-        sourcePath: languageConfig.modelSourcePath,
-        preview: "Fallback starter code inserted by server"
-      });
     }
 
     const docFile = files.find((file) => file.path === "doc/README.md");
@@ -6223,7 +6236,12 @@ class AiGameGeneratorService {
         if (repaired) {
           return repaired;
         }
-        throw new Error(`Generated source file ${sourcePath || config.modelSourcePath} was empty`);
+        warnings.push(`Generated source file ${sourcePath || config.modelSourcePath} was empty; inserting a request-specific starter.`);
+        return buildFallbackGameCode({
+          project: { title: this.fallbackTitle(request.idea), description: request.idea },
+          gameDesign: this.validateGameDesign({}, request),
+          nextSteps: []
+        }, resolvedPhysics, config.language, request);
       }
       return buildFallbackGameCode({
         project: { title: this.fallbackTitle(request.idea), description: request.idea },
@@ -6246,7 +6264,12 @@ class AiGameGeneratorService {
             }
           }
         }
-        throw new Error(message);
+        warnings.push(`${message}; inserting a request-specific starter.`);
+        return buildFallbackGameCode({
+          project: { title: this.fallbackTitle(request.idea), description: request.idea },
+          gameDesign: this.validateGameDesign({}, request),
+          nextSteps: []
+        }, resolvedPhysics, config.language, request);
       }
       warnings.push(`${message}; safe fallback starter inserted.`);
       return buildFallbackGameCode({
@@ -6286,7 +6309,12 @@ class AiGameGeneratorService {
               return repaired;
             }
           }
-          throw new Error(message);
+          warnings.push(`${message}; inserting a request-specific starter.`);
+          return buildFallbackGameCode({
+            project: { title: this.fallbackTitle(request.idea), description: request.idea },
+            gameDesign: this.validateGameDesign({}, request),
+            nextSteps: []
+          }, resolvedPhysics, config.language, request);
         }
         warnings.push(message);
       } else {
@@ -6317,7 +6345,12 @@ class AiGameGeneratorService {
               return repaired;
             }
           }
-          throw new Error(message);
+          warnings.push(`${message}; inserting a request-specific starter.`);
+          return buildFallbackGameCode({
+            project: { title: this.fallbackTitle(request.idea), description: request.idea },
+            gameDesign: this.validateGameDesign({}, request),
+            nextSteps: []
+          }, resolvedPhysics, config.language, request);
         }
         warnings.push(message);
       }
@@ -6345,7 +6378,12 @@ class AiGameGeneratorService {
             return repaired;
           }
         }
-        throw new Error(`Generated ${config.language} code did not match the requested game intent in ${sourcePath || config.modelSourcePath}`);
+        warnings.push(`Generated ${config.language} code did not match the requested game intent in ${sourcePath || config.modelSourcePath}; inserting a request-specific starter.`);
+        return buildFallbackGameCode({
+          project: { title: this.fallbackTitle(request.idea), description: request.idea },
+          gameDesign: this.validateGameDesign({}, request),
+          nextSteps: []
+        }, resolvedPhysics, config.language, request);
       }
       warnings.push(`Generated ${config.language} code did not match the requested game intent in ${sourcePath || config.modelSourcePath}; safe ${fallbackGenre || "generic"} fallback inserted. Problems: ${intentSummary}`);
       return buildFallbackGameCode({
@@ -6371,7 +6409,12 @@ class AiGameGeneratorService {
             return repaired;
           }
         }
-        throw new Error(missingMessage);
+        warnings.push(`${missingMessage} inserting a request-specific starter.`);
+        return buildFallbackGameCode({
+          project: { title: this.fallbackTitle(request.idea), description: request.idea },
+          gameDesign: this.validateGameDesign({}, request),
+          nextSteps: []
+        }, resolvedPhysics, config.language, request);
       }
       warnings.push(fallbackGenre
         ? `Missing microScript init/update/draw callbacks in ${sourcePath || config.modelSourcePath}; safe ${fallbackGenre} fallback inserted.`
