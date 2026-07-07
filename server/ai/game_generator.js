@@ -1978,22 +1978,76 @@ function buildMicroStudioDocGrounding() {
   ].join(" ");
 }
 
+function buildMicroStudioCorePromptRules() {
+  return [
+    "Treat the sprite editor and map editor as first-class parts of the workflow; use sprites for characters/UI art and maps for tile layouts or level structure whenever they improve the game.",
+    "Prefer a compact, playable starter with a small state object, a few helper functions, and bounded arrays for enemies, bullets, coins, particles, or hazards.",
+    "Keep init() for setup, update() for simulation and input, and draw() for rendering only.",
+    "Use microStudio drawing calls for all output and keep the game readable on the built-in Play screen.",
+    "Remove off-screen or spent objects promptly, and avoid unbounded spawning or large transient allocations."
+  ].join(" ");
+}
+
+function buildMicroStudioInputPromptRules() {
+  return [
+    "Use keyboard.press for edge-triggered actions like restart, jump, fire, or confirm; use held keyboard keys for continuous movement.",
+    "Use mouse.pressed and mouse.press for clicks, touch.press and touch.touching for touch controls, and gamepad.press or gamepad states when controller support is a fit.",
+    "Choose controls that match the genre: arrow keys or WASD for movement, Space for jump or fire, and mouse/touch for grid, board, or pointer-driven games."
+  ].join(" ");
+}
+
+function buildMicroScriptSyntaxPromptRules() {
+  return [
+    "Use microScript syntax only: object/end literals, if/then/elsif/else/end conditionals, and/or/not operators, for ... to ... by ... loops, and function = function() definitions.",
+    "Use microScript built-ins such as abs(), floor(), round(), min(), max(), random.next(), and random.nextInt().",
+    "Use list methods like push(), remove(), and splice-style array operations that match microScript conventions, and keep variable names free of JavaScript-only syntax.",
+    "Do not use braces, semicolons, arrow functions, const/let/var declarations, Math.*, ===, !==, ||, &&, or browser APIs."
+  ].join(" ");
+}
+
+function buildMicroStudioJavaScriptSyntaxPromptRules() {
+  return [
+    "Use microStudio JavaScript syntax only: function declarations, braces, semicolons, const/let, arrays, objects, Math.*, ===/!==, &&/||, and !.",
+    "Use microStudio runtime globals such as screen, keyboard, mouse, touch, gamepad, audio, sprites, maps, storage, and system as documented.",
+    "Prefer small helper functions, plain objects, and array methods like push(), splice(), shift(), and pop() for game state.",
+    "Do not use microScript keywords or syntax such as object/end, then/elsif/end conditionals, or assignment-style function definitions."
+  ].join(" ");
+}
+
+function buildMicroStudioGenrePromptRules(request) {
+  const text = `${request && request.idea ? request.idea : ""} ${request && request.gameDesign && request.gameDesign.genre ? request.gameDesign.genre : ""} ${request && request.gameDesign && request.gameDesign.coreLoop ? request.gameDesign.coreLoop : ""}`.toLowerCase();
+  const rules = [];
+  if (isPlatformerRequest(request)) {
+    rules.push("For a platformer, use gravity, a jump arc, simple collision against platforms, a bounded camera or fixed room, a goal, and a small number of collectibles or hazards.");
+  }
+  if (isShooterRequest(request)) {
+    rules.push("For a shooter, use movement, fire cooldowns, capped bullets, capped enemies, spawn timers, simple hit detection, score, and lives.");
+  }
+  if (/grid|board|puzzle|turn[-\s]?based|match|tac[-\s]?toe|sudoku|card/.test(text)) {
+    rules.push("For a grid or board game, use simple shapes, lines, pointer input, and clear state text instead of browser canvas habits.");
+  }
+  if (/sprite|tile|map|level|maze|platform/.test(text)) {
+    rules.push("If the game benefits from authored content, lean on sprites and maps instead of hardcoding every visual element.");
+  }
+  return rules.join(" ");
+}
+
 function buildMicroScriptSystemPrompt(request, resolvedPhysics) {
   return [
     "You are an expert microStudio microScript game developer.",
     buildMicroStudioDocGrounding(),
+    buildMicroStudioCorePromptRules(),
     "Generate a complete, playable starter 2D game project using microScript only.",
     "Return only valid JSON. Do not use markdown or code fences.",
     "Every source file must use microScript syntax only.",
     "Required lifecycle callbacks: init = function(), update = function(), draw = function().",
     "Do not generate JavaScript syntax, and do not mix languages.",
-    "Prefer microStudio drawing/input APIs such as screen.fillRect, screen.drawText, screen.drawSprite, screen.drawLine, keyboard.press.KEY_R, mouse.pressed, mouse.x, mouse.y, and touch when appropriate.",
-    "If the prompt suggests a grid, board, puzzle, or turn-based game, build a microStudio-friendly mouse-driven starter with simple shapes, text, or grid lines instead of browser canvas code.",
-    "If the prompt suggests a platformer, build a side-scrolling starter with gravity, jumping, simple platform collision, and a small number of collectible or goal objects.",
-    "If the prompt suggests a shooter, build an arcade shooter starter with movement, firing, enemy spawning, and bounded bullets or projectiles.",
+    "Prefer microStudio drawing/input APIs such as screen.fillRect, screen.drawRect, screen.fillRound, screen.drawRound, screen.drawLine, screen.drawText, screen.drawSprite, screen.drawMap, keyboard.press.KEY_R, mouse.pressed, mouse.press, mouse.x, mouse.y, touch.press, touch.touching, and gamepad when appropriate.",
+    buildMicroStudioInputPromptRules(),
+    buildMicroStudioGenrePromptRules(request),
     resolvedPhysics ? "Matter.js is enabled; create and clear the engine safely and keep body counts bounded." : "Do not use Matter.js unless the game concept explicitly needs rigid-body physics.",
     `Use ${mainPathForLanguage("microScript")} in the JSON schema, and keep the generated code free of browser/network/DOM APIs.`,
-    "Use microScript operators and syntax only: object/end, if/then/else/elsif, and/or/not, ==/!=, floor(), random.next().",
+    buildMicroScriptSyntaxPromptRules(),
     "Keep update() lightweight and bounded. Remove off-screen objects. Avoid large allocations in draw()."
   ].join(" ");
 }
@@ -2002,19 +2056,19 @@ function buildMicroStudioJavaScriptSystemPrompt(request, resolvedPhysics) {
   return [
     "You are an expert microStudio JavaScript game developer.",
     buildMicroStudioDocGrounding(),
+    buildMicroStudioCorePromptRules(),
     "Generate a complete, playable starter 2D game project using microStudio JavaScript only.",
     "Return only valid JSON. Do not use markdown or code fences.",
     "Every source file must use microStudio JavaScript syntax only.",
     "Required lifecycle callbacks: function init(), function update(), function draw().",
     "Do not generate microScript syntax, and do not mix languages.",
-    "Use microStudio runtime objects and methods such as screen.fillRect, screen.drawText, screen.drawSprite, screen.drawLine, screen.drawRound, screen.fillRound, keyboard.press.KEY_R, mouse.pressed, mouse.x, mouse.y, and touch when appropriate.",
+    "Use microStudio runtime objects and methods such as screen.fillRect, screen.drawRect, screen.fillRound, screen.drawRound, screen.drawLine, screen.drawText, screen.drawSprite, screen.drawMap, keyboard.press.KEY_R, mouse.pressed, mouse.press, mouse.x, mouse.y, touch.press, touch.touching, and gamepad when appropriate.",
     "Do not use browser or canvas APIs such as line(), circle(), rect(), fillText(), strokeText(), strokeStyle, fillStyle, document, window, addEventListener, onMouseDown, onMouseUp, or onClick.",
-    "If the prompt suggests a grid, board, puzzle, or turn-based game, build a microStudio-friendly mouse-driven starter using screen drawing and mouse input rather than browser canvas code.",
-    "If the prompt suggests a platformer, build a side-scrolling starter with gravity, jumping, simple platform collision, and a small number of collectible or goal objects.",
-    "If the prompt suggests a shooter, build an arcade shooter starter with movement, firing, enemy spawning, and bounded bullets or projectiles.",
+    buildMicroStudioInputPromptRules(),
+    buildMicroStudioGenrePromptRules(request),
     resolvedPhysics ? "Matter.js is enabled; create and clear the engine safely and keep body counts bounded." : "Do not use Matter.js unless the game concept explicitly needs rigid-body physics.",
     `Use ${mainPathForLanguage("microStudioJavaScript")} in the JSON schema, and keep the generated code free of browser/network/DOM APIs.`,
-    "Use microStudio JavaScript syntax only: function declarations, braces, semicolons, const/let, Math.*, ===/!==, &&/||, and !.",
+    buildMicroStudioJavaScriptSyntaxPromptRules(),
     "Keep update() lightweight and bounded. Remove off-screen objects. Avoid large allocations in draw()."
   ].join(" ");
 }
@@ -2022,7 +2076,8 @@ function buildMicroStudioJavaScriptSystemPrompt(request, resolvedPhysics) {
 function buildMicroScriptUserPrompt(request, resolvedPhysics) {
   return [
     "Generate a microStudio microScript game project.",
-    "Base the result on the microStudio documentation: sprite editor, map editor, code editor, live test, and the built-in screen/keyboard/mouse/touch/audio/storage APIs.",
+    buildMicroStudioDocGrounding(),
+    buildMicroStudioCorePromptRules(),
     `Idea: ${request.idea}`,
     "Language: microScript",
     `Physics: ${request.physics}`,
@@ -2030,6 +2085,7 @@ function buildMicroScriptUserPrompt(request, resolvedPhysics) {
     `Difficulty: ${request.difficulty}`,
     `Aspect ratio: ${request.aspectRatio}`,
     `Generate images: ${request.generateImages}`,
+    buildMicroStudioGenrePromptRules(request),
     "Return only JSON in this exact shape:",
     JSON.stringify(buildGameProjectSchema("microScript", request, resolvedPhysics), null, 2)
   ].join("\n");
@@ -2038,7 +2094,8 @@ function buildMicroScriptUserPrompt(request, resolvedPhysics) {
 function buildMicroStudioJavaScriptUserPrompt(request, resolvedPhysics) {
   return [
     "Generate a microStudio JavaScript game project.",
-    "Base the result on the microStudio documentation: sprite editor, map editor, code editor, live test, and the built-in screen/keyboard/mouse/touch/audio/storage APIs.",
+    buildMicroStudioDocGrounding(),
+    buildMicroStudioCorePromptRules(),
     `Idea: ${request.idea}`,
     "Language: microStudioJavaScript",
     `Physics: ${request.physics}`,
@@ -2046,6 +2103,7 @@ function buildMicroStudioJavaScriptUserPrompt(request, resolvedPhysics) {
     `Difficulty: ${request.difficulty}`,
     `Aspect ratio: ${request.aspectRatio}`,
     `Generate images: ${request.generateImages}`,
+    buildMicroStudioGenrePromptRules(request),
     "Return only JSON in this exact shape:",
     JSON.stringify(buildGameProjectSchema("microStudioJavaScript", request, resolvedPhysics), null, 2)
   ].join("\n");
