@@ -669,6 +669,10 @@ function buildFallbackDoc(plan, generatedFiles) {
     "",
     description,
     "",
+    "## microStudio",
+    "Use the Code section to edit the game logic, the Sprites section for art, and the Maps section for levels or boards.",
+    "Click Play to test changes instantly while the project is running.",
+    "",
     "## Controls",
     controls,
     "",
@@ -1109,14 +1113,27 @@ function buildGameProjectSchema(language, request, resolvedPhysics) {
   };
 }
 
+function buildMicroStudioDocGrounding() {
+  return [
+    "microStudio is an integrated game development environment with a sprite editor, a map editor, a code editor, instant online testing, mobile install support, collaboration, and community sharing.",
+    "Use microStudio-native APIs and project assets instead of browser canvas or DOM APIs.",
+    "The runtime is built around init(), update(), and draw(); keep update() focused on game logic and draw() focused on rendering.",
+    "Use the built-in screen, keyboard, mouse, touch, audio, sprites, maps, storage, and system objects when they fit the game concept.",
+    "Keep projects small, playable, and easy to extend inside the microStudio editors."
+  ].join(" ");
+}
+
 function buildMicroScriptSystemPrompt(request, resolvedPhysics) {
   return [
     "You are an expert microStudio microScript game developer.",
-    "Generate a complete, playable starter 2D browser game project using microScript only.",
+    buildMicroStudioDocGrounding(),
+    "Generate a complete, playable starter 2D game project using microScript only.",
     "Return only valid JSON. Do not use markdown or code fences.",
     "Every source file must use microScript syntax only.",
     "Required lifecycle callbacks: init = function(), update = function(), draw = function().",
     "Do not generate JavaScript syntax, and do not mix languages.",
+    "Prefer microStudio drawing/input APIs such as screen.fillRect, screen.drawText, screen.drawSprite, screen.drawLine, keyboard.press.KEY_R, mouse.pressed, mouse.x, mouse.y, and touch when appropriate.",
+    "If the prompt suggests a grid, board, puzzle, or turn-based game, build a microStudio-friendly mouse-driven starter with simple shapes, text, or grid lines instead of browser canvas code.",
     resolvedPhysics ? "Matter.js is enabled; create and clear the engine safely and keep body counts bounded." : "Do not use Matter.js unless the game concept explicitly needs rigid-body physics.",
     `Use ${mainPathForLanguage("microScript")} in the JSON schema, and keep the generated code free of browser/network/DOM APIs.`,
     "Use microScript operators and syntax only: object/end, if/then/else/elsif, and/or/not, ==/!=, floor(), random.next().",
@@ -1127,12 +1144,15 @@ function buildMicroScriptSystemPrompt(request, resolvedPhysics) {
 function buildMicroStudioJavaScriptSystemPrompt(request, resolvedPhysics) {
   return [
     "You are an expert microStudio JavaScript game developer.",
-    "Generate a complete, playable starter 2D browser game project using microStudio JavaScript only.",
+    buildMicroStudioDocGrounding(),
+    "Generate a complete, playable starter 2D game project using microStudio JavaScript only.",
     "Return only valid JSON. Do not use markdown or code fences.",
     "Every source file must use microStudio JavaScript syntax only.",
     "Required lifecycle callbacks: function init(), function update(), function draw().",
     "Do not generate microScript syntax, and do not mix languages.",
+    "Use microStudio runtime objects and methods such as screen.fillRect, screen.drawText, screen.drawSprite, screen.drawLine, screen.drawRound, screen.fillRound, keyboard.press.KEY_R, mouse.pressed, mouse.x, mouse.y, and touch when appropriate.",
     "Do not use browser or canvas APIs such as line(), circle(), rect(), fillText(), strokeText(), strokeStyle, fillStyle, document, window, addEventListener, onMouseDown, onMouseUp, or onClick.",
+    "If the prompt suggests a grid, board, puzzle, or turn-based game, build a microStudio-friendly mouse-driven starter using screen drawing and mouse input rather than browser canvas code.",
     resolvedPhysics ? "Matter.js is enabled; create and clear the engine safely and keep body counts bounded." : "Do not use Matter.js unless the game concept explicitly needs rigid-body physics.",
     `Use ${mainPathForLanguage("microStudioJavaScript")} in the JSON schema, and keep the generated code free of browser/network/DOM APIs.`,
     "Use microStudio JavaScript syntax only: function declarations, braces, semicolons, const/let, Math.*, ===/!==, &&/||, and !.",
@@ -1143,6 +1163,7 @@ function buildMicroStudioJavaScriptSystemPrompt(request, resolvedPhysics) {
 function buildMicroScriptUserPrompt(request, resolvedPhysics) {
   return [
     "Generate a microStudio microScript game project.",
+    "Base the result on the microStudio documentation: sprite editor, map editor, code editor, live test, and the built-in screen/keyboard/mouse/touch/audio/storage APIs.",
     `Idea: ${request.idea}`,
     "Language: microScript",
     `Physics: ${request.physics}`,
@@ -1158,6 +1179,7 @@ function buildMicroScriptUserPrompt(request, resolvedPhysics) {
 function buildMicroStudioJavaScriptUserPrompt(request, resolvedPhysics) {
   return [
     "Generate a microStudio JavaScript game project.",
+    "Base the result on the microStudio documentation: sprite editor, map editor, code editor, live test, and the built-in screen/keyboard/mouse/touch/audio/storage APIs.",
     `Idea: ${request.idea}`,
     "Language: microStudioJavaScript",
     `Physics: ${request.physics}`,
