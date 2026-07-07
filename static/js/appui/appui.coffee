@@ -1766,11 +1766,13 @@ class AppUI
           @setAiBusy false
           @setAiStatus(if targetMode == "new_project" then "New project created." else "Draft applied.")
           if targetMode == "new_project"
+            @app.pendingAutoOpenMainSource = true
             @app.updateProjectList result.projectId
           else if @app.project?
             @app.project.setLanguage result.project.language if result.project?.language?
             @app.editor.updateLanguage()
             @app.debug.updateDebuggerVisibility()
+            @app.queueMainSourceAutoOpen @app.project
             @app.project.load()
             @app.updateProjectList()
           @app.showNotification(if targetMode == "new_project" then "AI project created" else "AI draft applied")

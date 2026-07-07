@@ -2068,6 +2068,7 @@ AppUI = class AppUI {
           this.setAiBusy(false);
           this.setAiStatus(targetMode === "new_project" ? "New project created." : "Draft applied.");
           if (targetMode === "new_project") {
+            this.app.pendingAutoOpenMainSource = true;
             this.app.updateProjectList(result.projectId);
           } else if (this.app.project != null) {
             if ((result.project != null ? result.project.language : void 0) != null) {
@@ -2075,6 +2076,7 @@ AppUI = class AppUI {
             }
             this.app.editor.updateLanguage();
             this.app.debug.updateDebuggerVisibility();
+            this.app.queueMainSourceAutoOpen(this.app.project);
             this.app.project.load();
             this.app.updateProjectList();
           }

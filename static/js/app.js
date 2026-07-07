@@ -37,6 +37,7 @@ App = class App {
     this.lib_manager = new LibManager(this);
     this.sync = new Sync(this);
     this.publish = new Publish(this);
+    this.pendingAutoOpenMainSource = false;
     this.user_settings = new UserSettings(this);
     this.connected = false;
     this.tutorial = new TutorialWindow(this);
@@ -300,6 +301,10 @@ App = class App {
     this.lib_manager.projectOpened();
     this.sync.projectOpened();
     this.publish.loadProject(this.project);
+    if (this.pendingAutoOpenMainSource) {
+      this.pendingAutoOpenMainSource = false;
+      this.queueMainSourceAutoOpen(this.project);
+    }
     this.project.load();
     if (!this.tutorial.shown) {
       tuto = this.getProjectTutorial(project.slug);
@@ -310,6 +315,29 @@ App = class App {
         });
       }
     }
+  }
+
+  queueMainSourceAutoOpen(project = this.project) {
+    var app, listener;
+    if (project == null) {
+      return;
+    }
+    app = this;
+    listener = null;
+    listener = {
+      projectUpdate(change) {
+        if (change !== "sourcelist") {
+          return;
+        }
+        if (project.removeListener != null) {
+          project.removeListener(listener);
+        }
+        if (project.getSource("main") != null) {
+          return app.editor.setSelectedItem("main");
+        }
+      }
+    };
+    return project.addListener(listener);
   }
 
   deleteProject(project) {

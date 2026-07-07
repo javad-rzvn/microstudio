@@ -74,6 +74,12 @@ class @Project
       lis.projectUpdate(change)
     return
 
+  removeListener:(lis)->
+    index = @listeners.indexOf lis
+    if index >= 0
+      @listeners.splice index,1
+    return
+
   load:()->
     @updateSourceList()
     @updateSpriteList()

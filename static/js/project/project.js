@@ -99,6 +99,14 @@ this.Project = class Project {
     }
   }
 
+  removeListener(lis) {
+    var index;
+    index = this.listeners.indexOf(lis);
+    if (index >= 0) {
+      this.listeners.splice(index, 1);
+    }
+  }
+
   load() {
     this.updateSourceList();
     this.updateSpriteList();

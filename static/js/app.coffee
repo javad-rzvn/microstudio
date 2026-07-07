@@ -38,6 +38,7 @@ class App
     @lib_manager = new LibManager @
     @sync = new Sync @
     @publish = new Publish @
+    @pendingAutoOpenMainSource = false
     @user_settings = new UserSettings @
     @connected = false
     @tutorial = new TutorialWindow @
@@ -231,6 +232,9 @@ class App
     @lib_manager.projectOpened()
     @sync.projectOpened()
     @publish.loadProject(@project)
+    if @pendingAutoOpenMainSource
+      @pendingAutoOpenMainSource = false
+      @queueMainSourceAutoOpen(@project)
     @project.load()
     if not @tutorial.shown
       tuto = @getProjectTutorial(project.slug)
@@ -238,6 +242,18 @@ class App
         t = new Tutorial(tuto)
         t.load ()=>
           @tutorial.start(t)
+
+  queueMainSourceAutoOpen:(project=@project)->
+    return if not project?
+    app = @
+    listener = null
+    listener =
+      projectUpdate:(change)->
+        return if change != "sourcelist"
+        project.removeListener listener if project.removeListener?
+        if project.getSource("main")?
+          app.editor.setSelectedItem "main"
+    project.addListener listener
 
   deleteProject:(project)->
     if project.owner.nick == @nick
